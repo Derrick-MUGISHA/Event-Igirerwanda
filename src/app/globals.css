@@ -1,26 +1,105 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #12150d;
+  --panel: #1c2114;
+  --panel-2: #242b1a;
+  --cream: #f2efe4;
+  --cream-dim: #b6b3a2;
+  --orange: #e08a00;
+  --orange-deep: #c16f04;
+  --green: #6fa84c;
+  --green-deep: #35531f;
+  --tan: #c9a84c;
+  --terracotta: #c05a2e;
+  --sage: #9dbe8d;
+  --line: rgba(242, 239, 228, 0.14);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-cream: var(--cream);
+  --color-cream-dim: var(--cream-dim);
+  --color-orange: var(--orange);
+  --color-orange-deep: var(--orange-deep);
+  --color-green: var(--green);
+  --color-green-deep: var(--green-deep);
+  --color-tan: var(--tan);
+  --color-terracotta: var(--terracotta);
+  --color-sage: var(--sage);
+  --color-line: var(--line);
+  --font-display: var(--font-marker);
+  --font-label: var(--font-barlow);
+  --font-sans: var(--font-instrument);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--cream);
+  font-family: var(--font-instrument), system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--orange);
+  color: var(--bg);
+}
+
+/* Scratchy hand-drawn headlines */
+.display {
+  font-family: var(--font-marker), cursive;
+  font-weight: 400;
+  line-height: 1.05;
+}
+
+/* Condensed uppercase labels (eyebrows, footer headings) */
+.label {
+  font-family: var(--font-barlow), sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+/* Elements GSAP reveals on scroll / load */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  will-change: transform, opacity;
+}
+
+/* Continuous marquee strip */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: marquee 30s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .marquee-track {
+    animation: none;
+  }
+}
+
+/* Visible keyboard focus */
+:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 3px;
 }
