@@ -35,8 +35,8 @@ export default function HeroCanvas() {
     const count = COLS * ROWS;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
-    const orange = new THREE.Color("#e08a00");
-    const ember = new THREE.Color("#6fa84c");
+    const orange = new THREE.Color("#f59300");
+    const ember = new THREE.Color("#7cc35a");
 
     let i = 0;
     for (let x = 0; x < COLS; x++) {
@@ -83,10 +83,11 @@ export default function HeroCanvas() {
 
     const pos = geometry.attributes.position as THREE.BufferAttribute;
     let frame = 0;
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
 
     const render = () => {
-      const t = reduceMotion ? 0 : clock.getElapsedTime();
+      timer.update();
+      const t = reduceMotion ? 0 : timer.getElapsed();
       let j = 0;
       for (let x = 0; x < COLS; x++) {
         for (let z = 0; z < ROWS; z++) {
@@ -110,6 +111,7 @@ export default function HeroCanvas() {
 
     return () => {
       cancelAnimationFrame(frame);
+      timer.dispose();
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("resize", onResize);
       geometry.dispose();

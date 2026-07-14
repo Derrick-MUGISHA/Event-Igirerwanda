@@ -1,19 +1,45 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, type PanInfo } from "motion/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { CATEGORY_COLORS, EVENTS } from "@/lib/events";
+import { CATEGORY_COLORS, type VenueEvent } from "@/lib/events";
+import { useEvents } from "@/lib/useEvents";
+import { useEventFlow } from "@/components/EventFlow";
 
 gsap.registerPlugin(ScrollTrigger);
 
-const MONTHS = [
-  { year: 2026, month: 6, label: "July 2026" },
-  { year: 2026, month: 7, label: "August 2026" },
-];
-
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+type MonthTab = { year: number; month: number; label: string };
+
+/* Month tabs run from the current month through the last month that has
+   an event, so the board always covers the real schedule */
+function buildMonths(events: VenueEvent[]): MonthTab[] {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  let end = start;
+  for (const e of events) {
+    const d = new Date(`${e.date}T00:00:00`);
+    const m = new Date(d.getFullYear(), d.getMonth(), 1);
+    if (m > end) end = m;
+  }
+  const months: MonthTab[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end && months.length < 12) {
+    months.push({
+      year: cursor.getFullYear(),
+      month: cursor.getMonth(),
+      label: cursor.toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      }),
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+}
 
 function iso(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -39,11 +65,74 @@ function buildCells(year: number, month: number): Cell[] {
 
 type View = "calendar" | "upcoming";
 
+/* Placeholder board shown while the real events are being fetched */
+function BoardSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading events"
+      className="animate-pulse bg-panel"
+    >
+      {/* mobile: schedule rows */}
+      <ul className="sm:hidden">
+        {Array.from({ length: 4 }, (_, i) => (
+          <li
+            key={i}
+            className="flex gap-3 border-b border-line p-3 last:border-b-0"
+          >
+            <div className="flex w-11 shrink-0 flex-col items-center pt-1">
+              <span className="h-2.5 w-8 rounded bg-panel-2" />
+              <span className="mt-1 h-9 w-9 rounded-full bg-panel-2" />
+            </div>
+            <div className="flex-1">
+              <div className="h-14 rounded-lg bg-panel-2" />
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {/* desktop: month grid */}
+      <div className="hidden sm:block">
+        <div className="grid grid-cols-7 bg-panel-2">
+          {WEEKDAYS.map((wd) => (
+            <div
+              key={wd}
+              className="label border-b border-line px-2 py-3 text-center text-xs font-semibold text-cream sm:text-sm"
+            >
+              {wd}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7">
+          {Array.from({ length: 35 }, (_, i) => (
+            <div
+              key={i}
+              className="min-h-20 border-b border-r border-line bg-panel p-2 nth-[7n]:border-r-0 sm:min-h-28"
+            >
+              <div className="flex justify-end">
+                <span className="h-6 w-6 rounded-full bg-panel-2" />
+              </div>
+              {i % 4 === 1 && (
+                <div className="mt-2 h-5 rounded-md bg-panel-2" />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <span className="sr-only">Loading events…</span>
+    </div>
+  );
+}
+
 export default function MonthCalendar() {
   const [view, setView] = useState<View>("calendar");
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState(1);
   const sectionRef = useRef<HTMLElement>(null);
+  const { data, isPending, isError, refetch } = useEvents();
+  const { openEvent } = useEventFlow();
+  const events = useMemo(() => data ?? [], [data]);
+  const months = useMemo(() => buildMonths(events), [events]);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -60,7 +149,8 @@ export default function MonthCalendar() {
     return () => ctx.revert();
   }, []);
 
-  const { year, month, label } = MONTHS[index];
+  const safeIndex = Math.min(index, months.length - 1);
+  const { year, month, label } = months[safeIndex];
   const cells = buildCells(year, month);
   const now = new Date();
   const todayKey = iso(now.getFullYear(), now.getMonth(), now.getDate());
@@ -69,16 +159,16 @@ export default function MonthCalendar() {
   const monthPrefix = iso(year, month, 1).slice(0, 8);
   const eventDays = Array.from(
     new Set(
-      EVENTS.filter((e) => e.date.startsWith(monthPrefix)).map((e) => e.date)
+      events.filter((e) => e.date.startsWith(monthPrefix)).map((e) => e.date)
     )
   ).sort();
 
-  const upcoming = EVENTS.filter((e) => e.date >= todayKey).sort((a, b) =>
-    a.date.localeCompare(b.date)
-  );
+  const upcoming = events
+    .filter((e) => e.date >= todayKey)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const goMonth = (next: number) => {
-    setDirection(next > index ? 1 : -1);
+    setDirection(next > safeIndex ? 1 : -1);
     setIndex(next);
   };
 
@@ -142,8 +232,8 @@ export default function MonthCalendar() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => goMonth(index - 1)}
-                  disabled={index === 0}
+                  onClick={() => goMonth(safeIndex - 1)}
+                  disabled={safeIndex === 0}
                   aria-label="Previous month"
                   className="rounded-lg border border-line bg-panel px-3.5 py-2 text-cream transition-colors enabled:hover:border-orange enabled:hover:text-orange disabled:opacity-40"
                 >
@@ -151,8 +241,8 @@ export default function MonthCalendar() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => goMonth(index + 1)}
-                  disabled={index === MONTHS.length - 1}
+                  onClick={() => goMonth(safeIndex + 1)}
+                  disabled={safeIndex >= months.length - 1}
                   aria-label="Next month"
                   className="rounded-lg border border-line bg-panel px-3.5 py-2 text-cream transition-colors enabled:hover:border-orange enabled:hover:text-orange disabled:opacity-40"
                 >
@@ -164,6 +254,22 @@ export default function MonthCalendar() {
         </div>
 
         <div className="reveal overflow-hidden rounded-xl border border-line">
+          {isPending ? (
+            <BoardSkeleton />
+          ) : isError ? (
+            <div className="flex flex-col items-center gap-4 bg-panel px-5 py-14 text-center">
+              <p className="text-sm text-cream-dim">
+                Couldn&apos;t load the events. Please try again.
+              </p>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="rounded-lg border border-line bg-panel-2 px-4 py-2 text-sm font-medium text-cream transition-colors hover:border-orange hover:text-orange"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
           <AnimatePresence mode="wait" initial={false}>
             {view === "calendar" ? (
               <motion.div
@@ -189,7 +295,7 @@ export default function MonthCalendar() {
                     {eventDays.map((dayKey) => {
                       const d = new Date(`${dayKey}T00:00:00`);
                       const isToday = dayKey === todayKey;
-                      const dayEvents = EVENTS.filter(
+                      const dayEvents = events.filter(
                         (e) => e.date === dayKey
                       );
                       return (
@@ -217,10 +323,11 @@ export default function MonthCalendar() {
                           </div>
                           <div className="flex min-w-0 flex-1 flex-col gap-2">
                             {dayEvents.map((event) => (
-                              <a
+                              <button
                                 key={event.id}
-                                href="#calendar"
-                                className="block rounded-lg px-3.5 py-2.5 text-bg"
+                                type="button"
+                                onClick={() => openEvent(event)}
+                                className="block w-full cursor-pointer rounded-lg px-3.5 py-2.5 text-left text-bg"
                                 style={{
                                   backgroundColor:
                                     CATEGORY_COLORS[event.category],
@@ -233,7 +340,7 @@ export default function MonthCalendar() {
                                   {event.time} at {event.space} ·{" "}
                                   {event.soldOut ? "Sold out" : event.price}
                                 </span>
-                              </a>
+                              </button>
                             ))}
                           </div>
                         </li>
@@ -265,7 +372,7 @@ export default function MonthCalendar() {
                     className="grid grid-cols-7"
                   >
                     {cells.map((cell) => {
-                      const dayEvents = EVENTS.filter(
+                      const dayEvents = events.filter(
                         (e) => e.date === cell.key
                       );
                       const isToday = cell.key === todayKey;
@@ -290,14 +397,15 @@ export default function MonthCalendar() {
                             </span>
                           </div>
                           {dayEvents.map((event) => (
-                            <motion.a
+                            <motion.button
                               key={event.id}
-                              href="#calendar"
+                              type="button"
+                              onClick={() => openEvent(event)}
                               whileHover={{ scale: 1.04 }}
                               title={`${event.title} — ${event.time}, ${
                                 event.space
                               }. ${event.soldOut ? "Sold out" : event.price}`}
-                              className="mb-1 block overflow-hidden rounded-md px-1.5 py-1 text-[10px] font-semibold leading-tight wrap-break-word text-bg sm:text-xs"
+                              className="mb-1 block w-full cursor-pointer overflow-hidden rounded-md px-1.5 py-1 text-left text-[10px] font-semibold leading-tight wrap-break-word text-bg sm:text-xs"
                               style={{
                                 backgroundColor:
                                   CATEGORY_COLORS[event.category],
@@ -312,7 +420,7 @@ export default function MonthCalendar() {
                                   (Sold out)
                                 </span>
                               )}
-                            </motion.a>
+                            </motion.button>
                           ))}
                         </div>
                       );
@@ -334,6 +442,11 @@ export default function MonthCalendar() {
                 transition={{ duration: 0.25, ease: "easeOut" }}
                 className="cursor-grab bg-panel active:cursor-grabbing"
               >
+                {upcoming.length === 0 && (
+                  <li className="px-5 py-10 text-center text-sm text-cream-dim">
+                    No upcoming events yet — check back soon.
+                  </li>
+                )}
                 {upcoming.map((event) => {
                   const d = new Date(`${event.date}T00:00:00`);
                   const day = d.getDate();
@@ -353,9 +466,10 @@ export default function MonthCalendar() {
                         }`,
                       }}
                     >
-                      <a
-                        href="#calendar"
-                        className="grid grid-cols-[64px_1fr] items-center gap-4 px-4 py-4 transition-colors hover:bg-panel-2 sm:grid-cols-[80px_1fr_auto] sm:px-6"
+                      <button
+                        type="button"
+                        onClick={() => openEvent(event)}
+                        className="grid w-full cursor-pointer grid-cols-[64px_1fr] items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-panel-2 sm:grid-cols-[80px_1fr_auto] sm:px-6"
                       >
                         <span className="text-center">
                           <span className="display block text-2xl leading-none text-orange sm:text-3xl">
@@ -396,13 +510,14 @@ export default function MonthCalendar() {
                             </span>
                           )}
                         </span>
-                      </a>
+                      </button>
                     </li>
                   );
                 })}
               </motion.ul>
             )}
           </AnimatePresence>
+          )}
         </div>
 
         <div className="reveal mt-4 flex items-center justify-between gap-4">

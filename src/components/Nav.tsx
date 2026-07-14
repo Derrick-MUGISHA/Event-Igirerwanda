@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import Image from "next/image";
+// import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { CATEGORY_COLORS, nextEvent } from "@/lib/events";
+import { useEvents } from "@/lib/useEvents";
+import { useEventFlow } from "@/components/EventFlow";
 
 /* each section borrows a colour from the event-category system so the
    menu and the calendar legend speak the same language */
@@ -87,7 +90,9 @@ export default function Nav() {
   const [open, setOpen] = useState(false);
   /* null = no section opened yet; the second panel stays hidden until then */
   const [active, setActive] = useState<number | null>(null);
-  const upNext = nextEvent();
+  const { data: events, isPending } = useEvents();
+  const { openEvent } = useEventFlow();
+  const upNext = nextEvent(events ?? []);
 
   const openMenu = () => {
     setActive(null);
@@ -146,10 +151,23 @@ export default function Nav() {
         </a>
 
         {/* next upcoming event, with a mini calendar icon showing its day */}
+        {isPending && (
+          <span
+            aria-hidden="true"
+            className="flex animate-pulse items-center gap-2.5"
+          >
+            <span className="h-10 w-10 rounded-md border border-line bg-panel-2" />
+            <span className="hidden max-w-36 lg:block">
+              <span className="block h-3 w-28 rounded bg-panel-2" />
+              <span className="mt-1.5 block h-2.5 w-20 rounded bg-panel-2" />
+            </span>
+          </span>
+        )}
         {upNext && (
-          <a
-            href="#calendar"
-            className="flex items-center gap-2.5"
+          <button
+            type="button"
+            onClick={() => openEvent(upNext)}
+            className="flex cursor-pointer items-center gap-2.5 text-left"
             title={`${upNext.title} — ${upNext.time}, ${upNext.space}`}
             aria-label={`Next event: ${upNext.title}, ${upNext.time}`}
           >
@@ -175,8 +193,15 @@ export default function Nav() {
                 · {upNext.time}
               </span>
             </span>
-          </a>
+          </button>
         )}
+
+        {/* <Link
+          href="/verify"
+          className="label hidden text-xs font-semibold text-cream transition-colors hover:text-orange md:block"
+        >
+          Get your ticket
+        </Link> */}
 
         <a
           href="#calendar"

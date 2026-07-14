@@ -5,6 +5,7 @@ import {
   Instrument_Sans,
 } from "next/font/google";
 import "./globals.css";
+import Providers from "@/components/Providers";
 
 const marker = Permanent_Marker({
   variable: "--font-marker",
@@ -37,9 +38,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      data-scroll-behavior="smooth"
       className={`${marker.variable} ${barlow.variable} ${instrument.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

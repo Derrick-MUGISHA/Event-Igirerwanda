@@ -8,7 +8,7 @@ const PHRASES = [
   "SheCanCODE · AWE · Bootcamps",
 ];
 
-const COLORS = ["#e08a00", "#9dbe8d", "#c9a84c", "#f2efe4", "#c05a2e", "#6fa84c"];
+const COLORS = ["#f59300", "#a9d4a0", "#d4b458", "#ffffff", "#e2603a", "#7cc35a"];
 
 export default function CategoryMarquee() {
   return (

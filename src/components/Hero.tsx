@@ -4,6 +4,39 @@ import { useLayoutEffect, useRef } from "react";
 import gsap from "gsap";
 import HeroCanvas from "./HeroCanvas";
 import { CATEGORIES, CATEGORY_COLORS, nextEvent, todayIso } from "@/lib/events";
+import { useEvents } from "@/lib/useEvents";
+import { useEventFlow } from "@/components/EventFlow";
+
+/* Placeholder card with the same bones as the up-next card, shown while
+   the real upcoming event is being fetched */
+function UpNextSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading the next event"
+      className="hero-item mt-4 w-full max-w-md animate-pulse rounded-2xl border border-line bg-panel p-5 sm:p-6"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="h-3 w-20 rounded bg-panel-2" />
+        <span className="h-3 w-24 rounded bg-panel-2" />
+      </div>
+      <div className="mt-4 h-8 w-3/4 rounded bg-panel-2" />
+      <div className="mt-3 space-y-2">
+        <div className="h-3.5 w-full rounded bg-panel-2" />
+        <div className="h-3.5 w-2/3 rounded bg-panel-2" />
+      </div>
+      <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i}>
+            <div className="h-2.5 w-10 rounded bg-panel-2" />
+            <div className="mt-1.5 h-4 w-24 rounded bg-panel-2" />
+          </div>
+        ))}
+      </div>
+      <span className="sr-only">Loading the next event…</span>
+    </div>
+  );
+}
 
 /* Hand-drawn calendar illustration — the highlighted square is today */
 function CalendarDoodle({ day, monthLabel }: { day: number; monthLabel: string }) {
@@ -38,7 +71,7 @@ function CalendarDoodle({ day, monthLabel }: { day: number; monthLabel: string }
         width="350"
         height="290"
         rx="20"
-        fill="#35531f"
+        fill="#1e5c38"
         transform="rotate(-2 237 245)"
       />
       {/* header bar */}
@@ -48,14 +81,14 @@ function CalendarDoodle({ day, monthLabel }: { day: number; monthLabel: string }
         width="314"
         height="46"
         rx="10"
-        fill="#12150d"
+        fill="#0b2818"
         transform="rotate(-2 237 139)"
       />
       <text
         x="237"
         y="149"
         textAnchor="middle"
-        fill="#f2efe4"
+        fill="#ffffff"
         fontSize="27"
         style={{ fontFamily: "var(--font-marker)" }}
         transform="rotate(-2 237 139)"
@@ -69,7 +102,7 @@ function CalendarDoodle({ day, monthLabel }: { day: number; monthLabel: string }
         width="314"
         height="200"
         rx="12"
-        fill="#517045"
+        fill="#2e7a4d"
         transform="rotate(-2 237 272)"
       />
       {/* spiral rings */}
@@ -80,11 +113,11 @@ function CalendarDoodle({ day, monthLabel }: { day: number; monthLabel: string }
               cx + 22
             } 62 ${cx + 22} 96 ${cx} 96`}
             fill="none"
-            stroke="#e08a00"
+            stroke="#f59300"
             strokeWidth="11"
             strokeLinecap="round"
           />
-          <circle cx={cx} cy="118" r="10" fill="#c16f04" />
+          <circle cx={cx} cy="118" r="10" fill="#cf7a00" />
         </g>
       ))}
       {/* day squares — the filled one carries today's date */}
@@ -99,8 +132,8 @@ function CalendarDoodle({ day, monthLabel }: { day: number; monthLabel: string }
             width="64"
             height="64"
             rx="12"
-            fill={s.filled ? "#e08a00" : "none"}
-            stroke={s.filled ? "none" : "#e08a00"}
+            fill={s.filled ? "#f59300" : "none"}
+            stroke={s.filled ? "none" : "#f59300"}
             strokeWidth="7"
           />
           {s.filled && (
@@ -108,7 +141,7 @@ function CalendarDoodle({ day, monthLabel }: { day: number; monthLabel: string }
               x={s.x + 32}
               y={s.y + 45}
               textAnchor="middle"
-              fill="#12150d"
+              fill="#0b2818"
               fontSize="36"
               style={{ fontFamily: "var(--font-marker)" }}
             >
@@ -121,14 +154,14 @@ function CalendarDoodle({ day, monthLabel }: { day: number; monthLabel: string }
       <path
         d="M436 130 q10 30 -2 60"
         fill="none"
-        stroke="#6fa84c"
+        stroke="#7cc35a"
         strokeWidth="8"
         strokeLinecap="round"
       />
       <path
         d="M44 300 q-8 26 4 50"
         fill="none"
-        stroke="#6fa84c"
+        stroke="#7cc35a"
         strokeWidth="8"
         strokeLinecap="round"
       />
@@ -176,12 +209,15 @@ export default function Hero() {
     return () => ctx.revert();
   }, []);
 
+  const { data: events, isPending } = useEvents();
+  const { openEvent } = useEventFlow();
+
   const now = new Date();
   const monthLabel = now
     .toLocaleDateString("en-US", { month: "long" })
     .toUpperCase();
   /* the featured card shows today's event, or whatever comes up next */
-  const upNext = nextEvent();
+  const upNext = nextEvent(events ?? []);
   const isToday = upNext?.date === todayIso();
   const eventDay = upNext
     ? new Date(`${upNext.date}T00:00:00`).toLocaleDateString("en-US", {
@@ -224,10 +260,13 @@ export default function Hero() {
         {/* on mobile this sits at the bottom of the hero */}
         <div className="flex flex-col items-center justify-center">
           <CalendarDoodle day={now.getDate()} monthLabel={monthLabel} />
-          {upNext ? (
-            <a
-              href="#calendar"
-              className="hero-item mt-4 block w-full max-w-md rounded-2xl border border-line bg-panel p-5 transition-colors hover:border-orange sm:p-6"
+          {isPending ? (
+            <UpNextSkeleton />
+          ) : upNext ? (
+            <button
+              type="button"
+              onClick={() => openEvent(upNext)}
+              className="hero-item mt-4 block w-full max-w-md cursor-pointer rounded-2xl border border-line bg-panel p-5 text-left transition-colors hover:border-orange sm:p-6"
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="label text-xs font-semibold text-orange">
@@ -267,7 +306,8 @@ export default function Hero() {
                     Time
                   </dt>
                   <dd className="mt-0.5 font-semibold text-cream">
-                    {upNext.time} – {upNext.endTime}
+                    {upNext.time}
+                    {upNext.endTime && ` – ${upNext.endTime}`}
                   </dd>
                 </div>
                 <div>
@@ -287,14 +327,14 @@ export default function Hero() {
                   </dd>
                 </div>
               </dl>
-            </a>
+            </button>
           ) : (
             <a
               href="#calendar"
               className="hero-item mt-3 flex items-center gap-2.5 rounded-full border border-line bg-panel px-5 py-2.5 transition-colors hover:border-orange"
             >
               <span className="text-sm text-cream-dim">
-                Nothing coming up yet — see the full calendar
+                Nothing coming up yet see the full calendar
               </span>
             </a>
           )}

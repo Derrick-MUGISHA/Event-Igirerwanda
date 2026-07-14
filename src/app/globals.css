@@ -1,19 +1,20 @@
 @import "tailwindcss";
 
+/* White text, orange accents, dark green surfaces — clearer contrast */
 :root {
-  --bg: #12150d;
-  --panel: #1c2114;
-  --panel-2: #242b1a;
-  --cream: #f2efe4;
-  --cream-dim: #b6b3a2;
-  --orange: #e08a00;
-  --orange-deep: #c16f04;
-  --green: #6fa84c;
-  --green-deep: #35531f;
-  --tan: #c9a84c;
-  --terracotta: #c05a2e;
-  --sage: #9dbe8d;
-  --line: rgba(242, 239, 228, 0.14);
+  --bg: #0b2818;
+  --panel: #123522;
+  --panel-2: #1b4630;
+  --cream: #ffffff;
+  --cream-dim: #bfd4c5;
+  --orange: #f59300;
+  --orange-deep: #cf7a00;
+  --green: #7cc35a;
+  --green-deep: #1e5c38;
+  --tan: #d4b458;
+  --terracotta: #e2603a;
+  --sage: #a9d4a0;
+  --line: rgba(255, 255, 255, 0.18);
 }
 
 @theme inline {

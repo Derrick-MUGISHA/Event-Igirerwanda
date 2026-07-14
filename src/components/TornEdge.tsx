@@ -27,11 +27,11 @@ export default function TornStrip({ className = "" }: { className?: string }) {
       aria-hidden="true"
       className={`block h-14 w-full sm:h-20 ${className}`}
     >
-      <path d={d} fill="#f2efe4" />
+      <path d={d} fill="#ffffff" />
       <path
         d={`M ${jaggedPoints(30, 18, 55).join(" L ")}`}
         fill="none"
-        stroke="#d9d4c2"
+        stroke="#e4e9e2"
         strokeWidth="2"
         opacity="0.6"
       />

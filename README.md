@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IEMS — Igire Rwanda Event Management System
 
-## Getting Started
+Event registration, ticketing, and QR check-in platform for Igire Rwanda Organization, built with Next.js (App Router), MongoDB/Mongoose, Nodemailer (Gmail), and Cloudinary.
 
-First, run the development server:
+## How it works
+
+- **Participants** are pre-registered (name, email, phone, cohort). They enter their email at `/verify`, receive a magic link, verify, upload a photo, and get a QR-code ticket by email and on their dashboard.
+- **Plus-ones** — each participant can bring exactly one. The participant either fills their details or shares an invite link (`/plus-one/<token>`); the plus-one then follows the same verify → photo → ticket flow.
+- **Guests** are added directly by an admin and get a ticket immediately.
+- **Admins** — the super admin manages events (capacity, venue rules, mini-admin limit), mini admins, and partner organizations at `/admin`. Mini admins manage attendees, add guests, and scan tickets.
+- **Partner organizations** sign in with an access key at `/scan` and verify tickets at the entrance. Every ticket admits once; scans are atomic and logged.
+
+## Setup
+
+1. Copy `.env.example` to `.env.local` and fill in:
+   - `MONGODB_URI` — e.g. `mongodb://localhost:27017/iems`
+   - `JWT_SECRET` — `openssl rand -hex 32`
+   - `GMAIL_USER` / `GMAIL_APP_PASSWORD` — a Gmail address and [app password](https://myaccount.google.com/apppasswords)
+   - `CLOUDINARY_*` — from your Cloudinary dashboard
+   - `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` — bootstrap credentials
+2. Start MongoDB (e.g. `podman run -d --name iems-mongo -p 27017:27017 docker.io/library/mongo:7`)
+3. Install and seed:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+pnpm seed     # creates the super admin, the first event, and the pre-registered participants
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Key paths
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Path | Purpose |
+| --- | --- |
+| `src/models/` | Mongoose schemas: Admin, Event, Attendee, VerificationToken, Ticket, Organization, ScanLog |
+| `src/app/api/` | Route handlers (auth, me, plus-one, scan, admin, org) |
+| `src/lib/` | db connection, JWT auth, mailer, Cloudinary, QR, ticket issuance |
+| `scripts/seed.ts` | Idempotent seed (participants live here) |
+| `/verify`, `/dashboard`, `/ticket/[code]` | Participant flow |
+| `/admin`, `/admin/*` | Admin panel |
+| `/scan` | Partner-organization check-in |
