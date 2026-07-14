@@ -1,17 +1,12 @@
-import { verifyAuthToken } from "@/lib/auth";
-import { subscribeScans, subscribeNotifications } from "@/lib/scanBus";
+import { subscribeContentChanges } from "@/lib/scanBus";
 
 export const dynamic = "force-dynamic";
 
-/* Live gate feed as Server-Sent Events. EventSource can't set headers,
-   so the access token travels as a query parameter. */
+/* Public live channel for the landing page: pings subscribers whenever an
+   event is created, edited or gets a new poster, so the hero card and
+   calendar refresh without a reload. Carries no private data — just a
+   "something changed" signal. */
 export async function GET(req: Request) {
-  const token = new URL(req.url).searchParams.get("token") ?? "";
-  const auth = await verifyAuthToken(token);
-  if (!auth || (auth.kind !== "admin" && auth.kind !== "org")) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-
   const encoder = new TextEncoder();
   let cleanup = () => {};
 
@@ -25,19 +20,13 @@ export async function GET(req: Request) {
         }
       };
       send(`: connected\n\n`);
-      const unsubscribe = subscribeScans((event) => {
-        send(`data: ${JSON.stringify(event)}\n\n`);
-      });
-      /* notifications ride the same stream as named SSE events, so
-         EventSource listeners can pick the channel they care about */
-      const unsubscribeNotifications = subscribeNotifications((event) => {
-        send(`event: notification\ndata: ${JSON.stringify(event)}\n\n`);
+      const unsubscribe = subscribeContentChanges((scope) => {
+        send(`data: ${JSON.stringify({ scope })}\n\n`);
       });
       /* keep proxies (ngrok) from timing the stream out */
       const heartbeat = setInterval(() => send(`: ping\n\n`), 25_000);
       cleanup = () => {
         unsubscribe();
-        unsubscribeNotifications();
         clearInterval(heartbeat);
       };
       req.signal.addEventListener("abort", () => {

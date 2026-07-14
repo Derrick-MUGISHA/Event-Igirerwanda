@@ -1,6 +1,6 @@
 import { Schema, model, models, type Model, type Types } from "mongoose";
 
-export const SCAN_RESULTS = ["ACCEPTED", "ALREADY_USED", "INVALID", "REVOKED"] as const;
+export const SCAN_RESULTS = ["ACCEPTED", "ALREADY_USED", "INVALID", "REVOKED", "EXPIRED"] as const;
 export type ScanResult = (typeof SCAN_RESULTS)[number];
 
 export interface ScanLogDoc {

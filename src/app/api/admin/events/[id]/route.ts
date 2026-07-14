@@ -2,6 +2,7 @@ import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Event, EVENT_CATEGORIES } from "@/models";
 import { requireAdmin } from "@/lib/auth";
+import { publishContentChange } from "@/lib/scanBus";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
 
 const Body = z
@@ -13,6 +14,7 @@ const Body = z
     category: z.enum(EVENT_CATEGORIES),
     price: z.string(),
     description: z.string(),
+    posterUrl: z.string(),
     isPublic: z.boolean(),
     rules: z.array(z.string()),
     maxParticipants: z.number().int().positive(),
@@ -32,5 +34,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   await dbConnect();
   const event = await Event.findByIdAndUpdate(id, parsed.data, { new: true });
   if (!event) return notFound("Event");
+  publishContentChange("events");
   return ok({ event: { id: event._id, name: event.name, status: event.status } });
 }

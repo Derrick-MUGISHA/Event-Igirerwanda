@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { Attendee, Event, Ticket, type AttendeeDoc, type EventDoc } from "@/models";
+import { Attendee, Event, Ticket, eventDeadline, type AttendeeDoc, type EventDoc } from "@/models";
 import { ticketQrPngBuffer } from "./qr";
 import { sendTicketEmail } from "./mailer";
 import { ticketPdfBuffer } from "./ticketPdf";
@@ -102,6 +102,7 @@ export async function emailTicket(attendee: AttendeeDoc, event: EventDoc, code: 
     venue: event.venue,
     ticketCode: code,
     ticketUrl: url,
+    validUntil: eventDeadline(event),
     qrPng: qr,
     pdf,
   });

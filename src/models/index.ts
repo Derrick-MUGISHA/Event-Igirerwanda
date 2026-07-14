@@ -7,3 +7,4 @@ export * from "./VerificationToken";
 export * from "./Ticket";
 export * from "./Organization";
 export * from "./ScanLog";
+export * from "./Notification";

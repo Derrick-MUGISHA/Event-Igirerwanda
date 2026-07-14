@@ -25,6 +25,8 @@ export interface EventDoc {
   category: EventCategory;
   price: string;
   description: string;
+  /** promo poster shown on the event card (Cloudinary URL) */
+  posterUrl?: string;
   /** private events don't appear on the public calendar — participants
       are pre-registered and reach them through the ticket portal */
   isPublic: boolean;
@@ -47,6 +49,7 @@ const EventSchema = new Schema<EventDoc>(
     category: { type: String, enum: EVENT_CATEGORIES, default: "Mentorship" },
     price: { type: String, default: "Free" },
     description: { type: String, default: "" },
+    posterUrl: { type: String, default: "" },
     isPublic: { type: Boolean, default: true },
     rules: { type: [String], default: [] },
     maxParticipants: { type: Number, default: 200 },
@@ -59,3 +62,12 @@ const EventSchema = new Schema<EventDoc>(
 
 export const Event: Model<EventDoc> =
   (models.Event as Model<EventDoc>) ?? model<EventDoc>("Event", EventSchema);
+
+/* Every ticket expires when its event wraps up: the explicit end time when
+   one is set, otherwise the end of the event day. */
+export function eventDeadline(event: Pick<EventDoc, "date" | "endDate">): Date {
+  if (event.endDate) return new Date(event.endDate);
+  const end = new Date(event.date);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}

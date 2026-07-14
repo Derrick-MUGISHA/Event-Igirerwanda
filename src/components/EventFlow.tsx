@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { CATEGORY_COLORS, type VenueEvent } from "@/lib/events";
+import { type VenueEvent } from "@/lib/events";
 
 /* Clicking any event on the site funnels through here: the terms &
    conditions pop out first, and only after the visitor agrees do we
@@ -94,8 +94,17 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
               {/* header carries the event's category colour */}
               <div
                 className="h-1.5 w-full"
-                style={{ backgroundColor: CATEGORY_COLORS[event.category] }}
+                // style={{ backgroundColor: CATEGORY_COLORS[event.category] }}
               />
+              {/* the event's poster leads the dialog when one is uploaded */}
+              {event.posterUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={event.posterUrl}
+                  alt={`${event.title} poster`}
+                  className="max-h-52 w-full object-cover"
+                />
+              )}
               <div className="max-h-[80vh] overflow-y-auto p-6 sm:p-7">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -178,7 +187,7 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     onClick={close}
-                    className="rounded-lg border border-line bg-panel-2 px-5 py-2.5 text-sm font-semibold text-cream transition-colors hover:border-orange hover:text-orange"
+                    className="rounded-lg border border-line bg-panel-2 px-5 py-2.5 text-sm font-semibold text-cream transition-colors hover:border-orange hover:text-orange cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -186,7 +195,7 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
                     type="button"
                     onClick={proceed}
                     disabled={!agreed}
-                    className="rounded-lg bg-orange px-5 py-2.5 text-sm font-semibold text-bg transition-colors enabled:hover:bg-orange-deep disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-lg bg-orange px-5 py-2.5 text-sm font-semibold text-bg transition-colors enabled:hover:bg-orange-deep disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
                   >
                     Agree &amp; continue
                   </button>

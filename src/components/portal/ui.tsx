@@ -18,7 +18,7 @@ export function PortalShell({
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <Link href="/" className="mb-8 flex items-center gap-3">
-        <Image src="/iro-logo.svg" alt="" width={44} height={44} className="h-11 w-11" />
+        <Image src="/iro-logo.svg" alt="" width={44} height={44} priority className="h-11 w-11" />
         <span className="display text-xl text-cream">Igire Rwanda</span>
       </Link>
       <div className={`w-full ${wide ? "max-w-4xl" : "max-w-md"} text-center`}>
@@ -113,7 +113,7 @@ export function Field({
       <span className="label mb-1.5 block text-xs font-semibold text-cream-dim">{label}</span>
       <input
         {...props}
-        className="w-full rounded-lg border border-line bg-panel-2 px-3.5 py-2.5 text-cream transition-colors placeholder:text-cream-dim/60 focus:border-orange focus:outline-none"
+        className="w-full rounded-lg border border-line bg-panel-2 px-3.5 py-2.5 text-cream transition-colors placeholder:text-cream-dim/60 focus:outline-none"
       />
     </label>
   );

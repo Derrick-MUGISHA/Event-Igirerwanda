@@ -25,22 +25,33 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
     Attendee.findById(ticket.attendee),
     Event.findById(ticket.event),
   ]);
+  /* after check-in the attendee record is deleted; the ticket keeps a
+     holder snapshot so the pass page still shows who it belonged to */
+  const holder = attendee
+    ? { fullName: attendee.fullName, type: attendee.type, photoUrl: attendee.photoUrl ?? null }
+    : ticket.holder
+      ? {
+          fullName: ticket.holder.fullName,
+          type: ticket.holder.type,
+          photoUrl: ticket.holder.photoUrl ?? null,
+        }
+      : null;
   const [qr, role] = await Promise.all([
     ticketQrDataUrl(ticket.code, {
-      name: attendee?.fullName,
-      type: attendee?.type,
+      name: holder?.fullName,
+      type: holder?.type,
       eventName: event?.name,
     }),
     attendee ? attendeeRoleLine(attendee) : Promise.resolve(undefined),
   ]);
 
   return (
-    <PortalShell eyebrow="Event pass" title={attendee?.fullName ?? "Ticket"} wide>
+    <PortalShell eyebrow="Event pass" title={holder?.fullName ?? "Ticket"} wide>
       <IdCard
-        name={attendee?.fullName ?? "Attendee"}
+        name={holder?.fullName ?? "Attendee"}
         role={role}
-        type={attendee?.type ?? "GUEST"}
-        photoUrl={attendee?.photoUrl ?? null}
+        type={(holder?.type as "PARTICIPANT" | "PLUS_ONE" | "GUEST" | undefined) ?? "GUEST"}
+        photoUrl={holder?.photoUrl ?? null}
         eventName={event?.name ?? "Event"}
         eventDate={event?.date}
         venue={event?.venue}

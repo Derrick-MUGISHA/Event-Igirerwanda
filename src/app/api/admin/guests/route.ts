@@ -3,6 +3,7 @@ import { dbConnect } from "@/lib/db";
 import { Attendee, Event, Ticket } from "@/models";
 import { requireAdmin } from "@/lib/auth";
 import { issueTicket, CapacityError } from "@/lib/tickets";
+import { notifyAdmins } from "@/lib/notify";
 import { ok, fail, unauthorized } from "@/lib/http";
 
 export async function GET(req: Request) {
@@ -15,22 +16,47 @@ export async function GET(req: Request) {
     admin.role === "SUPER_ADMIN"
       ? { type: "GUEST" as const }
       : { type: "GUEST" as const, addedBy: admin.id };
-  const guests = await Attendee.find(filter).sort({ createdAt: -1 }).populate("addedBy", "name");
+  const guests = await Attendee.find(filter)
+    .sort({ createdAt: -1 })
+    .populate("addedBy", "name")
+    .populate("event", "name");
   const tickets = await Ticket.find({ attendee: { $in: guests.map((g) => g._id) } });
   const ticketByAttendee = new Map(tickets.map((t) => [t.attendee.toString(), t]));
 
+  /* guests who already checked in live on as ticket holder snapshots */
+  const holderFilter: Record<string, unknown> = { "holder.type": "GUEST" };
+  if (admin.role !== "SUPER_ADMIN") holderFilter["holder.addedBy"] = admin.id;
+  const attended = await Ticket.find(holderFilter)
+    .sort({ scannedAt: -1 })
+    .populate("event", "name")
+    .populate("holder.addedBy", "name");
+
   return ok({
-    guests: guests.map((g) => ({
-      id: g._id,
-      fullName: g.fullName,
-      email: g.email,
-      phone: g.phone,
-      addedBy: (g.addedBy as unknown as { name?: string } | null)?.name ?? null,
-      ticket: (() => {
-        const t = ticketByAttendee.get(g._id.toString());
-        return t ? { code: t.code, status: t.status } : null;
-      })(),
-    })),
+    guests: [
+      ...guests.map((g) => ({
+        id: g._id,
+        fullName: g.fullName,
+        email: g.email,
+        phone: g.phone,
+        addedBy: (g.addedBy as unknown as { name?: string } | null)?.name ?? null,
+        eventName: (g.event as unknown as { name?: string } | null)?.name ?? null,
+        addedAt: g.createdAt,
+        ticket: (() => {
+          const t = ticketByAttendee.get(g._id.toString());
+          return t ? { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null } : null;
+        })(),
+      })),
+      ...attended.map((t) => ({
+        id: t._id,
+        fullName: t.holder!.fullName,
+        email: t.holder!.email,
+        phone: t.holder!.phone ?? undefined,
+        addedBy: (t.holder!.addedBy as unknown as { name?: string } | null)?.name ?? null,
+        eventName: (t.event as unknown as { name?: string } | null)?.name ?? null,
+        addedAt: t.issuedAt,
+        ticket: { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null },
+      })),
+    ],
   });
 }
 
@@ -74,6 +100,13 @@ export async function POST(req: Request) {
 
   try {
     const ticket = await issueTicket(guest);
+    void notifyAdmins({
+      kind: "GUEST_ADDED",
+      severity: "info",
+      title: `Guest ticket issued to ${guest.fullName}`,
+      body: `${event.name} · invited by an admin, ticket emailed to ${guest.email}.`,
+      eventId: event._id,
+    });
     return ok({ guest: { id: guest._id, fullName: guest.fullName, ticketCode: ticket.code } }, 201);
   } catch (err) {
     if (err instanceof CapacityError) {

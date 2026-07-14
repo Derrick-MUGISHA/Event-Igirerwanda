@@ -6,6 +6,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
+import { cn } from "@/lib/utils";
 
 const marker = Permanent_Marker({
   variable: "--font-marker",
@@ -39,7 +40,10 @@ export default function RootLayout({
     <html
       lang="en"
       data-scroll-behavior="smooth"
-      className={`${marker.variable} ${barlow.variable} ${instrument.variable} h-full antialiased`}
+      /* browser extensions stamp attributes onto <html> before React
+         hydrates (e.g. __gcrremoteframetoken) — not ours, don't warn */
+      suppressHydrationWarning
+      className={cn("h-full antialiased font-sans", marker.variable, barlow.variable, instrument.variable)}
     >
       <body className="min-h-full flex flex-col">
         <Providers>{children}</Providers>

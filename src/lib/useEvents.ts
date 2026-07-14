@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import axios from "axios";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { subscribeEventsFeed } from "@/lib/liveStream";
 import type { VenueEvent } from "@/lib/events";
 
 export const apiClient = axios.create({
@@ -15,8 +17,17 @@ async function fetchEvents(): Promise<VenueEvent[]> {
 }
 
 /* One shared cache entry — Nav, Hero and the calendar all read from it,
-   so the page makes a single request for the whole events feed. */
+   so the page makes a single request for the whole events feed. A shared
+   SSE subscription refetches the moment an admin changes any event. */
 export function useEvents() {
+  const queryClient = useQueryClient();
+  useEffect(
+    () =>
+      subscribeEventsFeed(() => {
+        queryClient.invalidateQueries({ queryKey: ["events"] });
+      }),
+    [queryClient]
+  );
   return useQuery({
     queryKey: ["events"],
     queryFn: fetchEvents,

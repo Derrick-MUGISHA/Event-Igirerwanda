@@ -2,6 +2,7 @@ import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Event, EVENT_CATEGORIES } from "@/models";
 import { requireAdmin } from "@/lib/auth";
+import { publishContentChange } from "@/lib/scanBus";
 import { ok, fail, unauthorized } from "@/lib/http";
 
 export async function GET(req: Request) {
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
       category: e.category,
       price: e.price,
       description: e.description,
+      posterUrl: e.posterUrl ?? "",
       isPublic: e.isPublic,
       rules: e.rules,
       maxParticipants: e.maxParticipants,
@@ -58,6 +60,7 @@ export async function POST(req: Request) {
   await dbConnect();
   try {
     const event = await Event.create({ ...parsed.data, createdBy: admin.id });
+    publishContentChange("events");
     return ok({ event: { id: event._id, name: event.name, slug: event.slug } }, 201);
   } catch (err: unknown) {
     if (err && typeof err === "object" && "code" in err && err.code === 11000) {

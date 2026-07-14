@@ -158,6 +158,7 @@ function VerifyFlow() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              
             />
             <Button type="submit" className="w-full">
               Send verification link

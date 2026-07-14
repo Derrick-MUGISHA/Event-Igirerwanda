@@ -16,10 +16,17 @@ export type VenueEvent = {
   time: string;
   /** when it wraps up, e.g. "9:00 PM"; empty when the event has no end time */
   endTime: string;
+  /** full ISO datetimes — drive the live countdown on the featured card */
+  startsAt: string;
+  endsAt: string | null;
   space: string;
   price: string;
   /** one-liner on what the session is about, shown on the hero card */
   description: string;
+  /** promo poster (Cloudinary) — featured card art + hero background */
+  posterUrl: string;
+  /** OPEN events are taking registrations right now */
+  status: "OPEN" | "CLOSED";
   /** terms & conditions the attendee must accept before getting a ticket */
   rules: string[];
   soldOut?: boolean;

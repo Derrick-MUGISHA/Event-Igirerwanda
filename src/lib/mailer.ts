@@ -22,7 +22,7 @@ function shell(body: string): string {
       <hr style="margin:26px 0 14px;border:none;border-top:1px solid #e8e8e6"/>
       <p style="font-size:12px;color:#8b9089;margin:0">
         Igire Rwanda Organization · Kigali, Rwanda<br/>
-        You received this because of your event registration — if you didn't expect it, you can safely ignore it.
+        You received this because of your event registration if you didn't expect it, you can safely ignore it.
       </p>
     </div>
   </div>`;
@@ -32,16 +32,16 @@ const button = (url: string, text: string) =>
   `<p style="margin:26px 0">
      <a href="${url}" style="background:#0b2818;color:#ffffff;text-decoration:none;font-weight:bold;padding:13px 26px;border-radius:8px;display:inline-block">${text}</a>
    </p>
-   <p style="font-size:12px;color:#8b9089">If the button doesn't work, copy this link:<br/>${url}</p>`;
+   `
 
 export async function sendMagicLinkEmail(to: string, name: string, url: string, eventName: string) {
   await transporter.sendMail({
     from: FROM(),
     to,
-    subject: `Verify your email — ${eventName}`,
+    subject: `Verify your email ${eventName}`,
     html: shell(`
       <p>Hi ${name.split(" ")[0]},</p>
-      <p>Thanks for confirming your spot at <b>${eventName}</b>. To continue, just verify that this is your email address — the link below works once and expires in 30 minutes.</p>
+      <p>Thanks for confirming your spot at <b>${eventName}</b>. To continue, just verify that this is your email address the link below works once and expires in 30 minutes.</p>
       ${button(url, "Verify my email")}
     `),
   });
@@ -59,7 +59,7 @@ export async function sendPlusOneInviteEmail(
     subject: `${participantName} invited you to ${eventName}`,
     html: shell(`
       <p>Hello,</p>
-      <p><b>${participantName}</b> would love to bring you along to <b>${eventName}</b>. It only takes a minute to register as their guest — tell us a little about yourself and your pass will be on its way.</p>
+      <p><b>${participantName}</b> would love to bring you along to <b>${eventName}</b>. It only takes a minute to register as their guest tell us a little about yourself and your pass will be on its way.</p>
       ${button(url, "Join as their guest")}
     `),
   });
@@ -76,6 +76,8 @@ export async function sendTicketEmail(opts: {
   venue?: string;
   ticketCode: string;
   ticketUrl: string;
+  /** the moment the pass stops working — when the event wraps up */
+  validUntil?: Date | null;
   qrPng: Buffer;
   /** printable ticket document, attached as ticket.pdf */
   pdf?: Buffer;
@@ -124,7 +126,17 @@ export async function sendTicketEmail(opts: {
           <p style="margin:10px 0 0;font-size:12px;letter-spacing:2px;color:#bfd4c5">PASS ${opts.ticketCode}</p>
         </div>
         <div style="background:#1b4630;padding:10px 18px;text-align:center;font-size:11px;color:#bfd4c5">
-          This pass is personal and its QR code can only be scanned once.
+          This pass is personal and its QR code can only be scanned once.${
+            opts.validUntil
+              ? `<br/>Valid until ${opts.validUntil.toLocaleString("en-US", {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })} — it expires when the event ends.`
+              : ""
+          }
         </div>
       </div>
 
