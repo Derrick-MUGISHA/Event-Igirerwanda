@@ -12,7 +12,6 @@ export async function POST(req: Request) {
   if (!parsed.success) return fail("Token is required");
 
   await dbConnect();
-  // verify the token
   const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
   /* atomically claim the token so a double-click can't redeem it twice */
   const vt = await VerificationToken.findOneAndUpdate(
