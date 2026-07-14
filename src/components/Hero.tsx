@@ -229,8 +229,8 @@ export default function Hero() {
         </>
       )}
 
-      {/* the hero + sticky nav (5rem) fill the viewport exactly */}
-      <div className="relative mx-auto grid min-h-[calc(100svh-5rem)] max-w-7xl items-center gap-12 px-5 py-12 lg:grid-cols-[1.2fr_1fr] lg:py-0">
+      {/* the hero takes ~80 % of the viewport so content below is visible */}
+      <div className="relative mx-auto grid min-h-[85svh] max-w-7xl items-center gap-12 px-5 py-12 lg:grid-cols-[1.2fr_1fr] lg:py-0">
         <div>
           <p className="hero-item label mb-4 text-sm font-semibold text-sage">
             Empowering Women Through Digital Skills
