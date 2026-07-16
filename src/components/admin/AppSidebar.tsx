@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   Bell,
   CalendarDays,
   FileCode,
@@ -57,10 +58,11 @@ const MAIN = [
 const OPERATIONS = [
   { href: "/admin/scan", label: "Scan tickets", icon: ScanLine },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },
+  { href: "/admin/status", label: "API status", icon: Activity },
 ];
 
 const SECONDARY = [
-  { href: "/api-docs", label: "API docs", icon: FileCode },
+  { href: "/admin/api-docs", label: "API docs", icon: FileCode },
   { href: "/", label: "Public site", icon: Globe },
   { href: "mailto:support@igirerwanda.org", label: "Get help", icon: LifeBuoy },
 ];

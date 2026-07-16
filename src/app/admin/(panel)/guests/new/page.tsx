@@ -42,13 +42,13 @@ export default function NewGuestPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="w-full">
       <PageHeader
         title="Add guest"
         description="A ticket is generated and emailed immediately."
         crumbs={[{ label: "Guests", href: "/admin/guests" }, { label: "New" }]}
       />
-      <Card className="shadow-none">
+      <Card className="w-full shadow-none">
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">

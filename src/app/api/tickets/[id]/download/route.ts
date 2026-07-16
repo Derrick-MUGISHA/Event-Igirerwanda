@@ -35,6 +35,22 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     }
   }
 
+  /* event poster → pass background */
+  let eventImage: Buffer | null = null;
+  const posterUrl = event?.gallery?.[0] ?? null;
+  if (posterUrl) {
+    try {
+      if (posterUrl.startsWith("data:")) {
+        eventImage = Buffer.from(posterUrl.split(",")[1] ?? "", "base64");
+      } else {
+        const res = await fetch(posterUrl);
+        if (res.ok) eventImage = Buffer.from(await res.arrayBuffer());
+      }
+    } catch {
+      /* renders fine without it */
+    }
+  }
+
   const qr = await ticketQrPngBuffer(ticket.code, {
     name: who.name,
     type: who.type,
@@ -49,6 +65,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     code: ticket.code,
     qrPng: qr,
     photo,
+    eventImage,
   });
 
   return new Response(new Uint8Array(pdf), {

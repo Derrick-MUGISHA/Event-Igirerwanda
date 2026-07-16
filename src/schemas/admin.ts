@@ -12,7 +12,8 @@ import {
 /* Form validation schemas (React Hook Form + zodResolver). Datetimes are the
    raw <input type="datetime-local"> strings; the API coerces them. */
 
-const rules = z.array(z.string().min(1)).default([]);
+/* blank rows from the rules editor are trimmed away before submit */
+const rules = z.array(z.string()).default([]);
 const gallery = z.array(z.string().url("Each gallery entry must be a valid URL")).default([]);
 
 export const eventCreateSchema = z.object({

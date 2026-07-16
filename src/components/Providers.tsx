@@ -12,6 +12,9 @@ import { AuthProvider } from "@/context/AuthContext";
 import { EventFlowProvider } from "@/components/EventFlow";
 
 const ONE_DAY = 1000 * 60 * 60 * 24;
+/* bump when a persisted query's response shape changes, so stale caches from
+   an older build are discarded on load instead of crashing the UI */
+const CACHE_VERSION = "2026-07-16-health";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   /* one store per client instance, preloaded from localStorage on the client */
@@ -54,7 +57,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <ReduxProvider store={store}>
       <PersistQueryClientProvider
         client={queryClient}
-        persistOptions={{ persister, maxAge: ONE_DAY }}
+        persistOptions={{ persister, maxAge: ONE_DAY, buster: CACHE_VERSION }}
       >
         <AuthProvider>
           <EventFlowProvider>{children}</EventFlowProvider>

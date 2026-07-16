@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { CalendarPlus, CalendarRange } from "lucide-react";
 import { useEvents } from "@/hooks/admin/events";
 import { EVENT_CATEGORIES, EVENT_STATUSES, type AdminEvent } from "@/types/admin";
+import { CATEGORY_COLORS } from "@/lib/events";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
@@ -42,9 +43,26 @@ export default function EventsPage() {
       header: "Event",
       sortValue: (e) => e.name.toLowerCase(),
       cell: (e) => (
-        <div>
-          <p className="font-medium text-foreground">{e.name}</p>
-          <p className="text-xs text-muted-foreground">{e.location || "—"}</p>
+        <div className="flex items-center gap-3">
+          {e.gallery?.[0] ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={e.gallery[0]}
+              alt=""
+              className="size-10 shrink-0 rounded-md border border-border object-cover"
+            />
+          ) : (
+            <span
+              className="flex size-10 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white"
+              style={{ backgroundColor: CATEGORY_COLORS[e.category] ?? "#1e5c38" }}
+            >
+              {e.name.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{e.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{e.location || "—"}</p>
+          </div>
         </div>
       ),
     },

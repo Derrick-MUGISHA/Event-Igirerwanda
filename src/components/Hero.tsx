@@ -15,6 +15,7 @@ import {
 } from "@/lib/events";
 import { useEvents } from "@/lib/useEvents";
 import { useEventFlow } from "@/components/EventFlow";
+import { toPlainText } from "@/components/RichText";
 
 /* Placeholder card with the same bones as the featured card, shown while
    the real upcoming event is being fetched */
@@ -228,8 +229,8 @@ export default function Hero() {
             Calendar
           </h1>
           {upNext && (
-            <p className="hero-item mt-6 max-w-lg text-sm leading-relaxed text-cream-dim">
-              {upNext.description}
+            <p className="hero-item mt-6 max-w-lg text-sm leading-relaxed text-cream-dim line-clamp-3">
+              {toPlainText(upNext.description)}
             </p>
           )}
           <ul className="hero-item mt-9 flex max-w-lg flex-wrap gap-x-7 gap-y-3">

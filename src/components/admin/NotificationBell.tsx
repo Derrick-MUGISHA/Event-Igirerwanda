@@ -17,10 +17,12 @@ import type { NotificationEvent } from "@/lib/scanBus";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type Item = {
@@ -103,8 +105,8 @@ export default function NotificationBell() {
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Dialog>
+      <DialogTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
           <Bell className="size-5" />
           {unread > 0 && (
@@ -113,17 +115,17 @@ export default function NotificationBell() {
             </Badge>
           )}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96 max-w-[calc(100vw-2rem)] p-0">
-        <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <p className="label text-xs font-bold text-orange">Notifications</p>
+      </DialogTrigger>
+      <DialogContent className="w-[26rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-2xl p-0">
+        <DialogHeader className="flex flex-row items-center justify-between space-y-0 border-b border-line px-4 py-3">
+          <DialogTitle className="label text-xs font-bold text-orange">Notifications</DialogTitle>
           {unread > 0 && (
             <Button variant="ghost" size="xs" onClick={markAllRead} className="gap-1 text-cream-dim">
               <CheckCheck className="size-3.5" /> Mark all read
             </Button>
           )}
-        </div>
-        <div className="max-h-96 overflow-y-auto">
+        </DialogHeader>
+        <div className="max-h-[70vh] overflow-y-auto">
           {!data || data.notifications.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-cream-dim">
               Nothing yet — gate activity and guest tickets show up here.
@@ -160,7 +162,7 @@ export default function NotificationBell() {
             </ul>
           )}
         </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DialogContent>
+    </Dialog>
   );
 }

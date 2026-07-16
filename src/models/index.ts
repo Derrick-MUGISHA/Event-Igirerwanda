@@ -11,3 +11,4 @@ export * from "./Ticket";
 export * from "./Scanner";
 export * from "./ScanLog";
 export * from "./Notification";
+export * from "./HealthSample";

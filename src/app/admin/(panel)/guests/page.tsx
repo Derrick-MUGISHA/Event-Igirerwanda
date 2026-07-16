@@ -11,8 +11,19 @@ import { DataTable, type Column } from "@/components/admin/DataTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/admin/states";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+
+/* two-letter monogram for a guest's avatar fallback */
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,9 +53,14 @@ export default function GuestsPage() {
       header: "Guest",
       sortValue: (g) => g.name.toLowerCase(),
       cell: (g) => (
-        <div>
-          <p className="font-medium text-foreground">{g.name}</p>
-          <p className="text-xs text-muted-foreground">{g.email}</p>
+        <div className="flex items-center gap-3">
+          <Avatar>
+            <AvatarFallback>{initials(g.name)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{g.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{g.email}</p>
+          </div>
         </div>
       ),
     },
@@ -52,7 +68,7 @@ export default function GuestsPage() {
       id: "type",
       header: "Type",
       cell: (g) => (
-        <Badge variant="outline" className="rounded-full text-xs capitalize">
+        <Badge variant="outline" className="rounded-xl text-xs capitalize">
           {g.guestType.toLowerCase().replace(/_/g, " ")}
         </Badge>
       ),

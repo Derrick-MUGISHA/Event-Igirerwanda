@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { AlertTriangle, HelpCircle } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,20 +52,41 @@ export function ConfirmDialog({
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
+      <AlertDialogContent className="max-w-md rounded-2xl">
+        <AlertDialogHeader className="items-center text-center sm:text-center">
+          <span
+            className={cn(
+              "mb-1 flex size-12 items-center justify-center rounded-full",
+              destructive ? "bg-red-100 text-red-600" : "bg-primary/10 text-primary"
+            )}
+          >
+            {destructive ? (
+              <AlertTriangle className="size-6" />
+            ) : (
+              <HelpCircle className="size-6" />
+            )}
+          </span>
+          <AlertDialogTitle className="text-lg">{title}</AlertDialogTitle>
+          {description && (
+            <AlertDialogDescription className="text-center">
+              {description}
+            </AlertDialogDescription>
+          )}
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+        <AlertDialogFooter className="sm:justify-center">
+          <AlertDialogCancel disabled={busy} className="rounded-xl">
+            Cancel
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => {
               e.preventDefault();
               void run();
             }}
             disabled={busy}
-            className={cn(destructive && "bg-red-600 text-white hover:bg-red-700")}
+            className={cn(
+              "rounded-xl",
+              destructive && "bg-red-600 text-white hover:bg-red-700"
+            )}
           >
             {busy ? "Working…" : confirmLabel}
           </AlertDialogAction>

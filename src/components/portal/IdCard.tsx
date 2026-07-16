@@ -132,24 +132,13 @@ export default function IdCard({
       {/* tear-off stub with the QR */}
       <div className="flex shrink-0 flex-col items-center justify-center gap-2.5 p-5 sm:w-64 sm:p-6">
         <p className="label text-[10px] font-bold tracking-[0.3em] text-orange">Admit One</p>
-        <div className="relative">
-          <img
-            src={qrDataUrl}
-            alt="Ticket QR code"
-            className="h-52 w-52 rounded-xl bg-white p-2.5 sm:h-56 sm:w-56"
-          />
-          {/* Igire mark sits over the middle — the QR is error-correction "H",
-              so it still scans with the logo covering the centre */}
-          <span className="absolute left-1/2 top-1/2 flex h-[26%] w-[26%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-lg bg-white p-1 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
-            <Image
-              src="/iro-logo.svg"
-              alt=""
-              width={48}
-              height={48}
-              className="h-full w-full"
-            />
-          </span>
-        </div>
+        {/* light-on-transparent QR with the Igire mark baked into the centre —
+            sits straight on the dark stub, no white card */}
+        <img
+          src={qrDataUrl}
+          alt="Ticket QR code"
+          className="h-52 w-52 sm:h-56 sm:w-56"
+        />
         <p className="label max-w-52 truncate text-[9px] tracking-widest text-cream-dim">
           {code}
         </p>

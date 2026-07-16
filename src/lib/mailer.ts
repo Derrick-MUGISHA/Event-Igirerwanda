@@ -137,6 +137,8 @@ export async function sendTicketEmail(opts: {
   eventName: string;
   eventDate?: Date | null;
   venue?: string;
+  /** event poster shown as a banner atop the pass */
+  eventImage?: string | null;
   ticketCode: string;
   ticketUrl: string;
   /** the moment the pass stops working — when the event wraps up */
@@ -169,6 +171,11 @@ export async function sendTicketEmail(opts: {
       <p>Great news — you're all set for <b>${opts.eventName}</b>! Your personal event pass is below; just show the QR code at the entrance and you're in.</p>
 
       <div style="margin:24px 0;border:1px solid #e8e8e6;border-radius:14px;overflow:hidden;background:#123522">
+        ${
+          opts.eventImage
+            ? `<img src="${opts.eventImage}" alt="" width="100%" style="display:block;width:100%;height:150px;object-fit:cover"/>`
+            : ""
+        }
         <div style="background:#f59300;color:#0b2818;padding:10px 18px;font-size:11px;font-weight:bold;letter-spacing:2px;text-transform:uppercase">
           Igire Rwanda Organization
           <span style="float:right;background:rgba(18,21,13,0.2);border-radius:999px;padding:2px 10px">${typeLabel}</span>
@@ -185,7 +192,7 @@ export async function sendTicketEmail(opts: {
           </tr>
         </table>
         <div style="text-align:center;padding:0 18px 18px">
-          <img src="cid:ticket-qr" alt="Ticket QR code" width="220" height="220" style="background:#fff;border-radius:12px;padding:10px"/>
+          <img src="cid:ticket-qr" alt="Ticket QR code" width="240" height="240" style="display:block;margin:0 auto"/>
           <p style="margin:10px 0 0;font-size:12px;letter-spacing:2px;color:#bfd4c5">PASS ${opts.ticketCode}</p>
         </div>
         <div style="background:#1b4630;padding:10px 18px;text-align:center;font-size:11px;color:#bfd4c5">

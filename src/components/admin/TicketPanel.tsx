@@ -32,7 +32,7 @@ export function TicketPanel({ ticket }: { ticket: TicketLike | null }) {
             <img
               src={ticket.qrDataUrl}
               alt="Ticket QR code"
-              className="size-40 rounded-lg border border-border bg-white p-2"
+              className="size-40 rounded-lg border border-border bg-[#123522] p-2"
             />
             <p className="font-mono text-sm tracking-wide text-foreground">{ticket.ticketNumber}</p>
             <p className="text-xs text-muted-foreground">

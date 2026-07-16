@@ -37,7 +37,7 @@ export function StatusBadge({ value, className }: { value: string; className?: s
   const tone = MAP[value] ?? "zinc";
   return (
     <Badge
-      className={cn("rounded-full px-2 py-0 text-[11px] font-medium capitalize", TONE[tone], className)}
+      className={cn("rounded-xl px-2.5 py-0.5 text-[11px] font-medium capitalize", TONE[tone], className)}
     >
       {value.toLowerCase().replace(/_/g, " ")}
     </Badge>

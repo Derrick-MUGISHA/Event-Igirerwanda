@@ -90,6 +90,26 @@ const FLASH_META: Record<
 /* focusMode isn't in the standard DOM constraint types yet */
 type AdvancedFocus = MediaTrackConstraintSet & { focusMode?: string };
 
+/* turn a getUserMedia failure into a message the gate staff can act on */
+function describeCameraError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : "";
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Camera access is blocked. Allow the camera for this site in your browser settings, then reload.";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "No camera was found on this device.";
+    case "NotReadableError":
+    case "AbortError":
+      return "The camera is being used by another app. Close it and try again.";
+    default:
+      return err instanceof Error && err.message
+        ? `Could not start the camera: ${err.message}`
+        : "Could not start the camera — it needs HTTPS (or localhost) and camera permission.";
+  }
+}
+
 const FEED_KEY = ["gate-feed"];
 const FEED_LIMIT = 30;
 
@@ -128,7 +148,13 @@ function verdictDetail(e: FeedItem): string {
 /* Gate scanner: the camera stays on between scans, a frame is captured as
    evidence for each verdict, results land instantly in the shared feed
    cache, and scans from other gates stream in live. */
-export default function Scanner({ role }: { role: Role }) {
+export default function Scanner({
+  role,
+  profile,
+}: {
+  role: Role;
+  profile?: { name?: string | null; email?: string | null };
+}) {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const [flash, setFlash] = useState<{ id: number; kind: FlashKind } | null>(null);
@@ -187,7 +213,8 @@ export default function Scanner({ role }: { role: Role }) {
 
   useEffect(() => {
     if (!scanning) return;
-    const scanner = new Html5Qrcode("qr-reader");
+    let active: Html5Qrcode | null = null;
+    let cancelled = false;
 
     /* freeze the moment of the scan: one JPEG frame off the live video */
     const captureFrame = (): string | null => {
@@ -218,10 +245,10 @@ export default function Scanner({ role }: { role: Role }) {
     };
     const config = {
       fps: 15,
-      /* responsive box that tracks the video size, so the reticle sits where
-         the user naturally holds the pass */
+      /* a large search area (≈92% of the shorter edge) so the pass doesn't have
+         to fill the frame — the code is found wherever it lands in view */
       qrbox: (vw: number, vh: number) => {
-        const size = Math.round(Math.min(vw, vh) * 0.72);
+        const size = Math.round(Math.min(vw, vh) * 0.92);
         return { width: size, height: size };
       },
       aspectRatio: 1,
@@ -230,68 +257,99 @@ export default function Scanner({ role }: { role: Role }) {
       experimentalFeatures: { useBarCodeDetectorIfSupported: true },
     };
 
-    /* Ask the camera track for continuous autofocus once it's live. This is
-       the fix for "needs much focus": the pass snaps sharp at any distance
-       instead of the user hunting for the focal plane. Silently ignored on
-       devices/browsers that don't expose focusMode. */
-    const applyContinuousFocus = async () => {
+    /* Tune the live track for range + speed: continuous autofocus so a pass
+       snaps sharp at any distance, and the highest resolution the camera
+       supports (capped at 1080p) so a QR that's small/far still carries enough
+       pixels to decode — together this is what lets it read from a distance
+       like a native scanner. Applied AFTER the stream is live and best-effort,
+       so an unsupported hint can never stop the camera from opening. */
+    const tuneTrack = async () => {
       const video = document.querySelector<HTMLVideoElement>("#qr-reader video");
       const track = (video?.srcObject as MediaStream | null)?.getVideoTracks?.()[0];
       if (!track?.getCapabilities) return;
       const caps = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[] };
+      const constraints: MediaTrackConstraints & { advanced?: AdvancedFocus[] } = {};
       if (caps.focusMode?.includes("continuous")) {
+        constraints.advanced = [{ focusMode: "continuous" }];
+      }
+      if (caps.width?.max) constraints.width = { ideal: Math.min(1920, caps.width.max) };
+      if (caps.height?.max) constraints.height = { ideal: Math.min(1080, caps.height.max) };
+      try {
+        await track.applyConstraints(constraints);
+      } catch {
+        /* device rejected the hints — its defaults still run */
+      }
+    };
+
+    /* Each attempt runs on a FRESH instance. Once html5-qrcode's start()
+       rejects, that instance is stuck "under transition" and reusing it makes
+       the next start() throw "Cannot transition to a new state" — which is what
+       surfaced as "Could not start the camera" when the first attempt failed. */
+    const attempt = async (src: string | MediaTrackConstraints): Promise<Html5Qrcode> => {
+      const s = new Html5Qrcode("qr-reader");
+      try {
+        await s.start(src, config, onDecode, () => {});
+        return s;
+      } catch (e) {
         try {
-          await track.applyConstraints({ advanced: [{ focusMode: "continuous" } as AdvancedFocus] });
+          await s.stop();
         } catch {
-          /* device rejected the hint — its default AF still runs */
+          /* it never started */
         }
+        try {
+          s.clear();
+        } catch {
+          /* nothing to clear */
+        }
+        throw e;
       }
     };
 
     (async () => {
       try {
-        /* phones: back camera at a decent resolution with continuous AF. */
-        await scanner.start(
-          {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            advanced: [{ focusMode: "continuous" } as AdvancedFocus],
-          } as MediaTrackConstraints,
-          config,
-          onDecode,
-          () => {}
-        );
-        await applyContinuousFocus();
-      } catch {
+        if (!window.isSecureContext && location.hostname !== "localhost") {
+          throw new DOMException("Insecure context", "SecurityError");
+        }
+        /* Start with the simplest constraint that works everywhere — phones
+           honour "environment" (back camera); laptops ignore the ideal and use
+           their only camera. Resolution and focus are tuned AFTER the stream is
+           live so an unsupported hint can never block the camera from opening. */
         try {
+          active = await attempt({ facingMode: { ideal: "environment" } });
+        } catch {
+          if (cancelled) return;
+          /* a browser that won't resolve facingMode — pick a camera explicitly */
           const cameras = await Html5Qrcode.getCameras();
-          if (!cameras.length) throw new Error("No camera found on this device");
+          if (!cameras.length) throw new DOMException("No camera", "NotFoundError");
           const back = cameras.find((c) => /back|rear|environment/i.test(c.label));
-          await scanner.start((back ?? cameras[0]).id, config, onDecode, () => {});
-          await applyContinuousFocus();
-        } catch (err) {
-          setError(
-            err instanceof Error
-              ? `${err.message} — the camera needs HTTPS (or localhost) and permission.`
-              : "Could not start the camera"
-          );
+          active = await attempt((back ?? cameras[0]).id);
+        }
+        /* the effect was torn down while the camera was opening */
+        if (cancelled) {
+          await active.stop().catch(() => {});
+          return;
+        }
+        await tuneTrack();
+      } catch (err) {
+        if (!cancelled) {
+          setError(describeCameraError(err));
           setScanning(false);
         }
       }
     })();
 
     return () => {
+      cancelled = true;
       /* let the library tear its own video element down — yanking the
          container out of the DOM mid-stream triggers onabort errors */
-      if (scanner.isScanning) {
-        scanner
-          .stop()
-          .then(() => scanner.clear())
+      const s = active;
+      if (s?.isScanning) {
+        s.stop()
+          .then(() => s.clear())
           .catch(() => {});
-      } else {
+      } else if (s) {
         try {
-          scanner.clear();
+          s.clear();
         } catch {
           /* nothing to clear */
         }
@@ -299,12 +357,41 @@ export default function Scanner({ role }: { role: Role }) {
     };
   }, [scanning]);
 
+  const scannerInitials = (profile?.name ?? "S")
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
   return (
-    <div className="max-w-md space-y-4">
+    <div className="mx-auto max-w-md space-y-4">
+      {/* who's on the gate — the signed-in scanner's profile */}
+      {profile && (
+        <Panel className="flex items-center gap-3">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-orange/15 text-sm font-bold text-orange">
+            {scannerInitials}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-cream">
+              {profile.name ?? "Gate scanner"}
+            </p>
+            {profile.email && (
+              <p className="truncate text-xs text-cream-dim">{profile.email}</p>
+            )}
+          </div>
+          <span className="ml-auto flex items-center gap-1.5 rounded-full bg-green/15 px-2.5 py-1 text-[11px] font-semibold text-green">
+            <span className="size-1.5 rounded-full bg-green" />
+            On duty
+          </span>
+        </Panel>
+      )}
+
       {/* the camera container stays mounted; CSS hides it when idle */}
       <Panel className={scanning ? "" : "hidden"}>
-        <div className="relative">
-          <div id="qr-reader" className="overflow-hidden rounded-lg" />
+        <div className="relative mx-auto w-full max-w-sm">
+          <div id="qr-reader" className="mx-auto overflow-hidden rounded-lg" />
           <ScanFlash flash={flash} />
         </div>
         <p className="mt-3 flex items-center justify-center gap-2 text-xs text-cream-dim">

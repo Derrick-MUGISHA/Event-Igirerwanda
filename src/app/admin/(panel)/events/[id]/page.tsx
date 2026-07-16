@@ -4,6 +4,7 @@
 import { use, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { RichText } from "@/components/RichText";
 import {
   CalendarDays,
   Clock,
@@ -174,7 +175,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
               </dl>
               {event.details && (
                 <div className="border-t border-border pt-4">
-                  <p className="whitespace-pre-wrap text-muted-foreground">{event.details}</p>
+                  <RichText html={event.details} className="text-muted-foreground" />
                 </div>
               )}
               {event.rules.length > 0 && (

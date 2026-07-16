@@ -247,6 +247,22 @@ export async function emailTicket(holder: Holder, event: EventDoc, code: string)
     }
   }
 
+  /* the event poster becomes the pass background (PDF) and email banner */
+  const posterUrl = event.gallery?.[0] ?? null;
+  let eventImage: Buffer | null = null;
+  if (posterUrl) {
+    try {
+      if (posterUrl.startsWith("data:")) {
+        eventImage = Buffer.from(posterUrl.split(",")[1] ?? "", "base64");
+      } else {
+        const res = await fetch(posterUrl);
+        if (res.ok) eventImage = Buffer.from(await res.arrayBuffer());
+      }
+    } catch {
+      /* the pass renders fine without the poster */
+    }
+  }
+
   const pdf = await ticketPdfBuffer({
     name: view.name,
     role,
@@ -257,6 +273,7 @@ export async function emailTicket(holder: Holder, event: EventDoc, code: string)
     code,
     qrPng: qr,
     photo,
+    eventImage,
   });
 
   await sendTicketEmail({
@@ -268,6 +285,7 @@ export async function emailTicket(holder: Holder, event: EventDoc, code: string)
     eventName: event.name,
     eventDate: event.startTime,
     venue: event.location,
+    eventImage: posterUrl,
     ticketCode: code,
     ticketUrl: url,
     validUntil: eventDeadline(event),

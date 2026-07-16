@@ -1,6 +1,7 @@
 "use client";
 
 import { useRequireAuth } from "@/context/AuthContext";
+import { useAdminLiveSync } from "@/hooks/admin/useAdminLiveSync";
 import { AppSidebar } from "@/components/admin/AppSidebar";
 import { SiteHeader } from "@/components/admin/SiteHeader";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -9,6 +10,8 @@ import { Toaster } from "@/components/ui/sonner";
 
 export default function AdminPanelLayout({ children }: { children: React.ReactNode }) {
   const { ready, isAuthenticated } = useRequireAuth("admin", "/admin");
+  /* stream gate scans, notifications and event edits into the caches */
+  useAdminLiveSync();
 
   /* render nothing until hydrated (matches SSR) or when unauthenticated */
   if (!ready || !isAuthenticated) return null;

@@ -16,6 +16,7 @@ import {
 } from "@/components/portal/ui";
 import IdCard from "@/components/portal/IdCard";
 import Confetti from "@/components/portal/Confetti";
+import { RichText } from "@/components/RichText";
 import { AVATAR_COUNT, avatarDataUrl, avatarToFile } from "@/lib/avatars";
 
 type Gender = "FEMALE" | "MALE" | "OTHER";
@@ -595,9 +596,10 @@ function EventCard({ event }: { event: NonNullable<Me["event"]> }) {
           <h3 className="label text-[11px] font-semibold uppercase tracking-widest text-cream-dim">
             About
           </h3>
-          <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-cream-dim">
-            {event.about}
-          </p>
+          <RichText
+            html={event.about}
+            className="mt-1.5 text-sm leading-relaxed text-cream-dim"
+          />
         </div>
       )}
     </Panel>

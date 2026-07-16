@@ -41,12 +41,12 @@ export default function NewParticipantPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="w-full">
       <PageHeader
         title="Add participant"
         crumbs={[{ label: "Participants", href: "/admin/attendees" }, { label: "New" }]}
       />
-      <Card className="shadow-none">
+      <Card className="w-full shadow-none">
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">

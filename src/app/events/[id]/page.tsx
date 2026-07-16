@@ -10,6 +10,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import { useEvents } from "@/lib/useEvents";
 import { CATEGORY_COLORS, todayIso, type VenueEvent } from "@/lib/events";
+import { RichText } from "@/components/RichText";
 
 /* live Days : Hrs : Min : Sec board, ticking every second */
 function Countdown({ event }: { event: VenueEvent }) {
@@ -232,9 +233,16 @@ function EventDetail({ event }: { event: VenueEvent }) {
               <h2 className="label text-xs font-semibold uppercase tracking-widest text-orange">
                 About this event
               </h2>
-              <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-cream-dim">
-                {event.description || "Details for this event are coming soon."}
-              </p>
+              {event.description ? (
+                <RichText
+                  html={event.description}
+                  className="mt-3 text-sm leading-relaxed text-cream-dim"
+                />
+              ) : (
+                <p className="mt-3 text-sm leading-relaxed text-cream-dim">
+                  Details for this event are coming soon.
+                </p>
+              )}
             </div>
 
             {/* terms are already accepted — move on to get the ticket */}

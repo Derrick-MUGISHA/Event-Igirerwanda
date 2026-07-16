@@ -19,6 +19,7 @@ import {
 import { PageHeader } from "@/components/admin/PageHeader";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { EventPicker } from "@/components/admin/EventPicker";
 import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/admin/states";
@@ -37,6 +38,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+/* two-letter monogram for participants without a photo */
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
 function ParticipantsInner() {
   const router = useRouter();
@@ -63,9 +74,15 @@ function ParticipantsInner() {
       header: "Participant",
       sortValue: (p) => p.name.toLowerCase(),
       cell: (p) => (
-        <div>
-          <p className="font-medium text-foreground">{p.name}</p>
-          <p className="text-xs text-muted-foreground">{p.email}</p>
+        <div className="flex items-center gap-3">
+          <Avatar>
+            {p.profilePicture && <AvatarImage src={p.profilePicture} alt="" />}
+            <AvatarFallback>{initials(p.name)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{p.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{p.email}</p>
+          </div>
         </div>
       ),
     },
@@ -128,6 +145,7 @@ function ParticipantsInner() {
               </DropdownMenuItem>
               {p.registrationStatus !== "APPROVED" && (
                 <DropdownMenuItem
+                  disabled={setReg.isPending}
                   onClick={() => setReg.mutate({ id: p.id, registrationStatus: "APPROVED" })}
                 >
                   <Check className="size-4" />
@@ -136,6 +154,7 @@ function ParticipantsInner() {
               )}
               {p.registrationStatus !== "REJECTED" && (
                 <DropdownMenuItem
+                  disabled={setReg.isPending}
                   onClick={() => setReg.mutate({ id: p.id, registrationStatus: "REJECTED" })}
                 >
                   <X className="size-4" />

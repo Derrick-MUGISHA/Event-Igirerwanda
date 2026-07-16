@@ -49,7 +49,7 @@ export default function OrgScanPage() {
     >
       {isAuthenticated ? (
         <div className="space-y-4">
-          <Scanner role="scanner" />
+          <Scanner role="scanner" profile={{ name: user?.name, email: user?.email }} />
           <Button variant="ghost" onClick={() => logout.mutate()}>
             Sign out
           </Button>

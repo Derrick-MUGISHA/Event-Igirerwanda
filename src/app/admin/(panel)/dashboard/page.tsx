@@ -6,6 +6,7 @@ import { useEvents } from "@/hooks/admin/events";
 import { SectionCards } from "@/components/section-cards";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { DataTable, schema } from "@/components/data-table";
+import { SystemHealth } from "@/components/admin/SystemHealth";
 import { ErrorState } from "@/components/admin/states";
 
 export default function DashboardPage() {
@@ -33,6 +34,10 @@ export default function DashboardPage() {
     /* negative margins cancel the panel's padding so the block spans edge to
        edge with its own spacing — matching the dashboard-01 layout */
     <div className="@container/main -mx-4 flex flex-col gap-4 md:-mx-6 md:gap-6 lg:-mx-8">
+      {/* API health, uptime, traffic and the work queue lead the dashboard */}
+      <div className="px-4 lg:px-6">
+        <SystemHealth />
+      </div>
       <SectionCards data={dash.data} loading={dash.isPending} />
       <div className="px-4 lg:px-6">
         <ChartAreaInteractive
@@ -40,7 +45,7 @@ export default function DashboardPage() {
           hourly={dash.data?.attendance.hourlyCheckins ?? []}
         />
       </div>
-      <DataTable data={rows} />
+      <DataTable data={rows} loading={eventStats.isPending || events.isPending} />
     </div>
   );
 }

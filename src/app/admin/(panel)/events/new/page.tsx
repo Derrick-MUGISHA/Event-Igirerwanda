@@ -35,12 +35,12 @@ export default function NewEventPage() {
   }
 
   return (
-    <div className="mx-auto">
+    <div className="w-full">
       <PageHeader
         title="New event"
         crumbs={[{ label: "Events", href: "/admin/events" }, { label: "New" }]}
       />
-      <Card className="shadow-none">
+      <Card className="w-full shadow-none">
         <CardContent className="pt-6">
           <EventForm
             mode="create"
