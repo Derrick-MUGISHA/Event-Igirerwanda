@@ -56,7 +56,7 @@ export default function NotificationBell() {
   const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: FEED_KEY,
-    queryFn: () => api<Feed>("/api/admin/notifications", { token: "admin" }),
+    queryFn: () => api<Feed>("/api/admin/notifications", { role: "admin" }),
     staleTime: 30_000,
     refetchInterval: 120_000,
   });
@@ -96,7 +96,7 @@ export default function NotificationBell() {
       old ? { unread: 0, notifications: old.notifications.map((n) => ({ ...n, read: true })) } : old
     );
     try {
-      await api("/api/admin/notifications", { method: "PATCH", token: "admin", body: {} });
+      await api("/api/admin/notifications", { method: "PATCH", role: "admin", body: {} });
     } catch {
       queryClient.invalidateQueries({ queryKey: FEED_KEY });
     }

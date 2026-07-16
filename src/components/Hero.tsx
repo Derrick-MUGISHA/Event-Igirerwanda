@@ -211,23 +211,10 @@ export default function Hero() {
 
   return (
     <section ref={rootRef} className="relative overflow-hidden bg-bg">
-      {/* the coming programme's poster doubles as the page background */}
-      {upNext?.posterUrl ? (
-        <>
-          <img
-            src={upNext.posterUrl}
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-md"
-          />
-          <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-bg via-bg/80 to-bg" />
-        </>
-      ) : (
-        <>
-          <HeroCanvas />
-          <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-bg via-bg/70 to-bg/30" />
-        </>
-      )}
+      {/* the animated dot field is the page's signature backdrop — it stays
+          put whether or not an event is coming up */}
+      <HeroCanvas />
+      <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-bg via-bg/70 to-bg/30" />
 
       {/* the hero takes ~80 % of the viewport so content below is visible */}
       <div className="relative mx-auto grid min-h-[85svh] max-w-7xl items-center gap-12 px-5 py-12 lg:grid-cols-[1.2fr_1fr] lg:py-0">

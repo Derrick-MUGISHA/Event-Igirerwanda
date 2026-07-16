@@ -10,7 +10,7 @@ export default function AdminScanPage() {
         Point the camera at an attendee&apos;s QR code. Each ticket admits once — a second scan is
         flagged automatically.
       </p>
-      <Scanner token="admin" />
+      <Scanner role="admin" />
     </div>
   );
 }

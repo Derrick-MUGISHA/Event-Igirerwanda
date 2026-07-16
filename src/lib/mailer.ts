@@ -1,14 +1,30 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
+/* Build the transporter lazily so the Gmail credentials are read at call time.
+   The app injects env before modules run, but tsx (seed/health/tests) loads
+   .env.local after the hoisted imports evaluate — an eager transporter would
+   capture undefined creds and fail every send with "Missing credentials". */
+let cached: Transporter | undefined;
+function transport(): Transporter {
+  if (!cached) {
+    cached = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
+  }
+  return cached;
+}
 
 const FROM = () => `Igire Rwanda Events <${process.env.GMAIL_USER}>`;
+
+/* liveness check for the health-check script — verifies the SMTP connection
+   and credentials without sending a message. Throws on failure. */
+export async function verifyMailer(): Promise<boolean> {
+  return transport().verify();
+}
 
 /* Reads like a note a person wrote: white background, plain prose, one
    button, a real sign-off — the branding stays out of the way */
@@ -35,7 +51,7 @@ const button = (url: string, text: string) =>
    `
 
 export async function sendMagicLinkEmail(to: string, name: string, url: string, eventName: string) {
-  await transporter.sendMail({
+  await transport().sendMail({
     from: FROM(),
     to,
     subject: `Verify your email ${eventName}`,
@@ -53,7 +69,7 @@ export async function sendPlusOneInviteEmail(
   url: string,
   eventName: string
 ) {
-  await transporter.sendMail({
+  await transport().sendMail({
     from: FROM(),
     to,
     subject: `${participantName} invited you to ${eventName}`,
@@ -61,6 +77,53 @@ export async function sendPlusOneInviteEmail(
       <p>Hello,</p>
       <p><b>${participantName}</b> would love to bring you along to <b>${eventName}</b>. It only takes a minute to register as their guest tell us a little about yourself and your pass will be on its way.</p>
       ${button(url, "Join as their guest")}
+    `),
+  });
+}
+
+export async function sendRegistrationConfirmation(to: string, name: string, eventName: string) {
+  await transport().sendMail({
+    from: FROM(),
+    to,
+    subject: `You're registered for ${eventName}`,
+    html: shell(`
+      <p>Hi ${name.split(" ")[0]},</p>
+      <p>Your registration for <b>${eventName}</b> is confirmed. The next step is to complete your profile so we can issue your event pass — you'll get it by email the moment it's ready.</p>
+    `),
+  });
+}
+
+export async function sendEventUpdateEmail(
+  to: string,
+  name: string,
+  eventName: string,
+  message: string
+) {
+  await transport().sendMail({
+    from: FROM(),
+    to,
+    subject: `Update: ${eventName}`,
+    html: shell(`
+      <p>Hi ${name.split(" ")[0]},</p>
+      <p>There's an update about <b>${eventName}</b>:</p>
+      <p style="padding:12px 16px;background:#f6f7f5;border-radius:8px">${message}</p>
+    `),
+  });
+}
+
+export async function sendEventReminderEmail(
+  to: string,
+  name: string,
+  eventName: string,
+  whenLabel: string
+) {
+  await transport().sendMail({
+    from: FROM(),
+    to,
+    subject: `Reminder: ${eventName} is coming up`,
+    html: shell(`
+      <p>Hi ${name.split(" ")[0]},</p>
+      <p>Just a friendly reminder that <b>${eventName}</b> is happening ${whenLabel}. Bring your event pass — the QR code is scanned at the entrance.</p>
     `),
   });
 }
@@ -97,7 +160,7 @@ export async function sendTicketEmail(opts: {
     : "";
 
   /* the email mirrors the business-card ID shown on the dashboard */
-  await transporter.sendMail({
+  await transport().sendMail({
     from: FROM(),
     to: opts.to,
     subject: `Your event pass — ${opts.eventName}`,

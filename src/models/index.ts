@@ -2,9 +2,12 @@
    regardless of which route loaded first */
 export * from "./Admin";
 export * from "./Event";
-export * from "./Attendee";
+export * from "./Participant";
+export * from "./Guest";
 export * from "./VerificationToken";
+export * from "./RefreshToken";
+export * from "./Counter";
 export * from "./Ticket";
-export * from "./Organization";
+export * from "./Scanner";
 export * from "./ScanLog";
 export * from "./Notification";

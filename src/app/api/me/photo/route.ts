@@ -1,5 +1,5 @@
 import { dbConnect } from "@/lib/db";
-import { Attendee } from "@/models";
+import { Participant } from "@/models";
 import { requireAttendee } from "@/lib/auth";
 import { uploadImage } from "@/lib/cloudinary";
 import { issueTicket, CapacityError } from "@/lib/tickets";
@@ -8,8 +8,8 @@ import { ok, fail, unauthorized, notFound } from "@/lib/http";
 const MAX_BYTES = 8 * 1024 * 1024;
 
 export async function POST(req: Request) {
-  const attendeeId = await requireAttendee(req);
-  if (!attendeeId) return unauthorized();
+  const participantId = await requireAttendee(req);
+  if (!participantId) return unauthorized();
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("photo");
@@ -18,18 +18,18 @@ export async function POST(req: Request) {
   if (file.size > MAX_BYTES) return fail("Image must be under 8MB");
 
   await dbConnect();
-  const attendee = await Attendee.findById(attendeeId);
-  if (!attendee) return notFound("Registration");
-  if (!attendee.emailVerifiedAt) return fail("Verify your email first", 403);
+  const participant = await Participant.findById(participantId);
+  if (!participant) return notFound("Registration");
+  if (participant.status === "PENDING") return fail("Verify your email first", 403);
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  attendee.photoUrl = await uploadImage(buffer, "attendees");
-  attendee.status = "COMPLETE";
-  await attendee.save();
+  participant.profilePicture = await uploadImage(buffer, "participants");
+  participant.status = "COMPLETE";
+  await participant.save();
 
   try {
-    const ticket = await issueTicket(attendee);
-    return ok({ photoUrl: attendee.photoUrl, ticketCode: ticket.code });
+    const ticket = await issueTicket({ kind: "Participant", doc: participant });
+    return ok({ profilePicture: participant.profilePicture, ticketCode: ticket.code });
   } catch (err) {
     if (err instanceof CapacityError) return fail(err.message, 409);
     throw err;

@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { api, ApiError, clearToken, getToken } from "@/lib/client";
+import { api, ApiError } from "@/lib/client";
+import { useRequireAuth } from "@/context/AuthContext";
 import {
   PortalShell,
   Panel,
@@ -15,6 +15,8 @@ import {
   SkeletonBar,
 } from "@/components/portal/ui";
 import IdCard from "@/components/portal/IdCard";
+import Confetti from "@/components/portal/Confetti";
+import { AVATAR_COUNT, avatarDataUrl, avatarToFile } from "@/lib/avatars";
 
 type Gender = "FEMALE" | "MALE" | "OTHER";
 type Relationship = "RELATIVE" | "FRIEND" | "COLLEAGUE" | "PARTNER" | "MENTOR" | "OTHER";
@@ -31,7 +33,13 @@ type Me = {
     photoUrl: string | null;
     status: string;
   };
-  event: { name: string; date: string; venue: string; rules: string[] } | null;
+  event: {
+    name: string;
+    date: string;
+    venue: string;
+    about: string;
+    rules: string[];
+  } | null;
   ticket: { code: string; status: string; qrDataUrl: string } | null;
   plusOne: {
     fullName: string;
@@ -87,30 +95,26 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
+  const { isAuthenticated } = useRequireAuth("participant", "/verify");
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState("");
+  /* set the moment a pass is generated, so the celebration only fires once */
+  const [celebrate, setCelebrate] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setMe(await api<Me>("/api/me", { token: "attendee" }));
+      setMe(await api<Me>("/api/me", { role: "participant" }));
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        clearToken("attendee");
-        router.replace("/verify");
-        return;
-      }
+      /* a 401 is handled by the request layer (refresh → sign-out), which trips
+         the guard above; anything else is a real error to surface */
+      if (err instanceof ApiError && err.status === 401) return;
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
-    if (!getToken("attendee")) {
-      router.replace("/verify");
-      return;
-    }
-    load();
-  }, [load, router]);
+    if (isAuthenticated) load();
+  }, [isAuthenticated, load]);
 
   if (error)
     return (
@@ -127,14 +131,16 @@ export default function DashboardPage() {
       </PortalShell>
     );
 
-  const firstName = me.attendee.fullName.startsWith("Guest of ")
+  const fullName = me.attendee.fullName ?? "";
+  const firstName = fullName.startsWith("Guest of ")
     ? "Guest"
-    : me.attendee.fullName.split(" ")[0];
+    : fullName.split(" ")[0] || fullName;
 
   /* once the pass exists, the pass IS the dashboard */
   if (me.ticket) {
     return (
       <PortalShell eyebrow="Ticket portal" title={`Hi, ${firstName}`} wide>
+        <Confetti fire={celebrate} />
         <div className="space-y-6">
           <motion.div {...cardMotion(0)}>
             <IdCard
@@ -167,7 +173,13 @@ export default function DashboardPage() {
     <PortalShell eyebrow="Ticket portal" title={`Hi, ${firstName}`} wide>
       <div className="grid gap-6 md:grid-cols-2">
         <motion.div {...cardMotion(0)}>
-          <CompleteCard me={me} onDone={load} />
+          <CompleteCard
+            me={me}
+            onDone={() => {
+              setCelebrate(true);
+              load();
+            }}
+          />
         </motion.div>
         {me.event && (
           <motion.div {...cardMotion(1)}>
@@ -184,15 +196,23 @@ export default function DashboardPage() {
   );
 }
 
-/* One step to the pass: participants only add their photo (we already
-   have their details); plus-ones can also put their real name on it */
+/* One step to the pass: the visitor fills in whatever personal details are
+   still missing, then adds a photo — the pass is issued once both are done */
 function CompleteCard({ me, onDone }: { me: Me; onDone: () => void }) {
   const { attendee } = me;
   const nameMissing =
-    attendee.type === "PLUS_ONE" && attendee.fullName.startsWith("Guest of ");
+    !attendee.fullName || attendee.fullName.startsWith("Guest of ");
+  const phoneMissing = !attendee.phone;
+  const genderMissing = !attendee.gender;
+  const hasMissing = nameMissing || phoneMissing || genderMissing;
+
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [gender, setGender] = useState<Gender | "">("");
+  const [mode, setMode] = useState<"upload" | "avatar">("upload");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -204,18 +224,33 @@ function CompleteCard({ me, onDone }: { me: Me; onDone: () => void }) {
     });
   }
 
+  const hasImage = mode === "upload" ? !!file : avatar !== null;
+  const detailsIncomplete =
+    (nameMissing && !fullName) ||
+    (phoneMissing && !phone) ||
+    (genderMissing && !gender);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) return;
+    if (!hasImage || detailsIncomplete) return;
     setBusy(true);
     setError("");
     try {
-      if (nameMissing && fullName) {
-        await api("/api/me", { method: "PATCH", token: "attendee", body: { fullName } });
+      /* patch in the missing details before the ticket is issued */
+      const profile: Record<string, string> = {};
+      if (nameMissing && fullName) profile.name = fullName;
+      if (phoneMissing && phone) profile.phone = phone;
+      if (genderMissing && gender) profile.gender = gender;
+      if (Object.keys(profile).length > 0) {
+        await api("/api/me", { method: "PATCH", role: "participant", body: profile });
       }
+      /* an uploaded photo, or the chosen avatar rasterised to a PNG — both
+         go through the same photo endpoint and become the profile picture */
+      const image =
+        mode === "avatar" && avatar !== null ? await avatarToFile(avatar) : file;
       const form = new FormData();
-      form.append("photo", file);
-      await api("/api/me/photo", { token: "attendee", form });
+      form.append("photo", image as File);
+      await api("/api/me/photo", { role: "participant", form });
       onDone();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
@@ -227,8 +262,8 @@ function CompleteCard({ me, onDone }: { me: Me; onDone: () => void }) {
     <Panel>
       <h2 className="label mb-4 text-sm font-bold text-orange">One step to your pass</h2>
       <p className="mb-4 text-sm text-cream-dim">
-        {nameMissing
-          ? "Tell us your name and add a clear photo — your event pass is generated right after."
+        {hasMissing
+          ? "We just need a few details and a clear photo of yourself — your event pass is generated right after."
           : "We already have your details — just add a clear photo of yourself and your event pass is generated instantly."}
       </p>
       <form onSubmit={submit} className="space-y-4">
@@ -241,33 +276,114 @@ function CompleteCard({ me, onDone }: { me: Me; onDone: () => void }) {
             placeholder="As it should appear on your pass"
           />
         )}
-        <div className="flex items-center gap-4">
-          {preview ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={preview}
-              alt="Photo preview"
-              className="h-20 w-20 shrink-0 rounded-xl border-2 border-orange object-cover"
-            />
-          ) : (
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-line text-2xl text-cream-dim">
-              ?
-            </div>
-          )}
-          <label className="flex-1 cursor-pointer">
-            <span className="label mb-1.5 block text-left text-xs font-semibold text-cream-dim">
-              Your photo
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              required
-              onChange={(e) => pick(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-cream-dim file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-panel-2 file:px-4 file:py-2 file:text-cream"
-            />
-          </label>
+        {phoneMissing && (
+          <Field
+            label="Phone number"
+            type="tel"
+            required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="e.g. 0788 000 000"
+          />
+        )}
+        {genderMissing && (
+          <Select
+            label="Gender"
+            required
+            value={gender}
+            onChange={(e) => setGender(e.target.value as Gender)}
+          >
+            <option value="" disabled>
+              Select…
+            </option>
+            {GENDER_OPTIONS.map(([value, text]) => (
+              <option key={value} value={value}>
+                {text}
+              </option>
+            ))}
+          </Select>
+        )}
+        {/* choose between a real photo and a built-in avatar */}
+        <div className="flex rounded-lg border border-line bg-panel-2 p-1">
+          {(
+            [
+              ["upload", "Upload a photo"],
+              ["avatar", "Use an avatar"],
+            ] as ["upload" | "avatar", string][]
+          ).map(([value, text]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setMode(value)}
+              aria-pressed={mode === value}
+              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
+                mode === value ? "bg-orange text-bg" : "text-cream hover:text-orange"
+              }`}
+            >
+              {text}
+            </button>
+          ))}
         </div>
-        <Button type="submit" busy={busy} disabled={!file} className="w-full">
+
+        {mode === "upload" ? (
+          <div className="flex items-center gap-4">
+            {preview ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={preview}
+                alt="Photo preview"
+                className="h-20 w-20 shrink-0 rounded-xl border-2 border-orange object-cover"
+              />
+            ) : (
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-line text-2xl text-cream-dim">
+                ?
+              </div>
+            )}
+            <label className="flex-1 cursor-pointer">
+              <span className="label mb-1.5 block text-left text-xs font-semibold text-cream-dim">
+                Your photo
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => pick(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-cream-dim file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-panel-2 file:px-4 file:py-2 file:text-cream"
+              />
+            </label>
+          </div>
+        ) : (
+          <div>
+            <span className="label mb-2 block text-left text-xs font-semibold text-cream-dim">
+              Pick an avatar
+            </span>
+            <div className="flex flex-wrap gap-3">
+              {Array.from({ length: AVATAR_COUNT }, (_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setAvatar(i)}
+                  aria-pressed={avatar === i}
+                  className={`h-14 w-14 overflow-hidden rounded-full border-2 transition-transform hover:scale-105 ${
+                    avatar === i ? "border-orange" : "border-line"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={avatarDataUrl(i)}
+                    alt={`Avatar ${i + 1}`}
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <Button
+          type="submit"
+          busy={busy}
+          disabled={!hasImage || detailsIncomplete}
+          className="w-full"
+        >
           {busy ? "Generating your pass…" : "Submit & get my pass"}
         </Button>
         {error && <Note tone="error">{error}</Note>}
@@ -320,7 +436,7 @@ function PlusOneCard({ me, onChanged }: { me: Me; onChanged: () => void }) {
     setError("");
     try {
       await api("/api/me/plus-one", {
-        token: "attendee",
+        role: "participant",
         body: { fullName, email, gender, relationship },
       });
       onChanged();
@@ -337,7 +453,7 @@ function PlusOneCard({ me, onChanged }: { me: Me; onChanged: () => void }) {
     setError("");
     try {
       const { inviteUrl } = await api<{ inviteUrl: string }>("/api/me/plus-one/invite", {
-        token: "attendee",
+        role: "participant",
         body: inviteEmail ? { email: inviteEmail } : {},
       });
       setInviteUrl(inviteUrl);
@@ -474,12 +590,15 @@ function EventCard({ event }: { event: NonNullable<Me["event"]> }) {
         })}
         {event.venue && ` · ${event.venue}`}
       </p>
-      {event.rules.length > 0 && (
-        <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-cream-dim">
-          {event.rules.map((r) => (
-            <li key={r}>{r}</li>
-          ))}
-        </ul>
+      {event.about && (
+        <div className="mt-4">
+          <h3 className="label text-[11px] font-semibold uppercase tracking-widest text-cream-dim">
+            About
+          </h3>
+          <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-cream-dim">
+            {event.about}
+          </p>
+        </div>
       )}
     </Panel>
   );

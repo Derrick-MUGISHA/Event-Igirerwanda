@@ -1,7 +1,7 @@
 import { dbConnect } from "@/lib/db";
-import { Attendee, Event, Ticket } from "@/models";
+import { Event, Guest, Participant, Ticket } from "@/models";
 import { ticketQrDataUrl } from "@/lib/qr";
-import { attendeeRoleLine } from "@/lib/tickets";
+import { roleLine, type Holder } from "@/lib/tickets";
 import { PortalShell, Panel } from "@/components/portal/ui";
 import IdCard from "@/components/portal/IdCard";
 
@@ -21,40 +21,52 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
     );
   }
 
-  const [attendee, event] = await Promise.all([
-    Attendee.findById(ticket.attendee),
+  /* the live holder record (Participant or Guest); after check-in it's
+     deleted and the ticket's holder snapshot fills in instead */
+  const [holderDoc, event] = await Promise.all([
+    ticket.holderType === "Participant"
+      ? Participant.findById(ticket.holderId)
+      : Guest.findById(ticket.holderId),
     Event.findById(ticket.event),
   ]);
-  /* after check-in the attendee record is deleted; the ticket keeps a
-     holder snapshot so the pass page still shows who it belonged to */
-  const holder = attendee
-    ? { fullName: attendee.fullName, type: attendee.type, photoUrl: attendee.photoUrl ?? null }
-    : ticket.holder
-      ? {
-          fullName: ticket.holder.fullName,
-          type: ticket.holder.type,
-          photoUrl: ticket.holder.photoUrl ?? null,
-        }
-      : null;
+
+  let name: string;
+  let type: string;
+  let photoUrl: string | null;
+  let holder: Holder | null = null;
+  if (holderDoc && ticket.holderType === "Participant") {
+    const p = holderDoc as InstanceType<typeof Participant>;
+    holder = { kind: "Participant", doc: p };
+    name = p.name;
+    type = "PARTICIPANT";
+    photoUrl = p.profilePicture ?? null;
+  } else if (holderDoc) {
+    const g = holderDoc as InstanceType<typeof Guest>;
+    holder = { kind: "Guest", doc: g };
+    name = g.name;
+    type = g.guestType;
+    photoUrl = g.profile ?? null;
+  } else {
+    name = ticket.holder?.name ?? "Attendee";
+    type = ticket.holder?.label ?? "GUEST";
+    photoUrl = ticket.holder?.photoUrl ?? null;
+  }
+
   const [qr, role] = await Promise.all([
-    ticketQrDataUrl(ticket.code, {
-      name: holder?.fullName,
-      type: holder?.type,
-      eventName: event?.name,
-    }),
-    attendee ? attendeeRoleLine(attendee) : Promise.resolve(undefined),
+    ticketQrDataUrl(ticket.code, { name, type, eventName: event?.name }),
+    holder ? roleLine(holder) : Promise.resolve(undefined),
   ]);
 
   return (
-    <PortalShell eyebrow="Event pass" title={holder?.fullName ?? "Ticket"} wide>
+    <PortalShell eyebrow="Event pass" title={name} wide>
       <IdCard
-        name={holder?.fullName ?? "Attendee"}
+        name={name}
         role={role}
-        type={(holder?.type as "PARTICIPANT" | "PLUS_ONE" | "GUEST" | undefined) ?? "GUEST"}
-        photoUrl={holder?.photoUrl ?? null}
+        type={type === "PARTICIPANT" ? "PARTICIPANT" : "GUEST"}
+        photoUrl={photoUrl}
         eventName={event?.name ?? "Event"}
-        eventDate={event?.date}
-        venue={event?.venue}
+        eventDate={event?.startTime}
+        venue={event?.location}
         qrDataUrl={qr}
         code={ticket.code}
         status={ticket.status}

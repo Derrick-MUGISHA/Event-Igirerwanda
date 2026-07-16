@@ -12,7 +12,7 @@ function secret(): Uint8Array {
 export type AuthPayload =
   | { kind: "attendee"; sub: string }
   | { kind: "admin"; sub: string; role: AdminRole }
-  | { kind: "org"; sub: string };
+  | { kind: "scanner"; sub: string };
 
 export async function signAuthToken(payload: AuthPayload, expiresIn = "7d"): Promise<string> {
   return new SignJWT({ ...payload })
@@ -22,10 +22,18 @@ export async function signAuthToken(payload: AuthPayload, expiresIn = "7d"): Pro
     .sign(secret());
 }
 
+/* Participant access tokens are short-lived; a rotating refresh cookie keeps
+   the session alive (see lib/session.ts). */
+export const ACCESS_TOKEN_TTL = "15m";
+
+export function signParticipantAccessToken(participantId: string): Promise<string> {
+  return signAuthToken({ kind: "attendee", sub: participantId }, ACCESS_TOKEN_TTL);
+}
+
 export async function verifyAuthToken(token: string): Promise<AuthPayload | null> {
   try {
     const { payload } = await jwtVerify(token, secret());
-    if (payload.kind === "attendee" || payload.kind === "admin" || payload.kind === "org") {
+    if (payload.kind === "attendee" || payload.kind === "admin" || payload.kind === "scanner") {
       return payload as unknown as AuthPayload;
     }
     return null;
@@ -86,22 +94,24 @@ export async function requireAttendee(req: Request): Promise<string | null> {
   return auth?.kind === "attendee" ? auth.sub : null;
 }
 
-export async function requireAdmin(
-  req: Request,
-  opts: { superOnly?: boolean } = {}
-): Promise<{ id: string; role: AdminRole } | null> {
+export async function requireAdmin(req: Request): Promise<{ id: string; role: AdminRole } | null> {
   const auth = await getAuth(req);
   if (auth?.kind !== "admin") return null;
-  if (opts.superOnly && auth.role !== "SUPER_ADMIN") return null;
   return { id: auth.sub, role: auth.role };
 }
 
-/* gate scanning is open to admins and partner organizations */
+/* gate scanning is open to admins and scanner accounts */
 export async function requireScanner(
   req: Request
-): Promise<{ adminId?: string; orgId?: string } | null> {
+): Promise<{ adminId?: string; scannerId?: string } | null> {
   const auth = await getAuth(req);
   if (auth?.kind === "admin") return { adminId: auth.sub };
-  if (auth?.kind === "org") return { orgId: auth.sub };
+  if (auth?.kind === "scanner") return { scannerId: auth.sub };
   return null;
+}
+
+/* endpoints exclusive to a signed-in scanner account */
+export async function requireScannerAccount(req: Request): Promise<string | null> {
+  const auth = await getAuth(req);
+  return auth?.kind === "scanner" ? auth.sub : null;
 }

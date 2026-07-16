@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { api, ApiError } from "@/lib/client";
+import { ApiError } from "@/lib/client";
+import { useParticipantAuth } from "@/context/AuthContext";
 import { useEvents } from "@/lib/useEvents";
 import {
   PortalShell,
@@ -25,6 +26,7 @@ const step = {
 
 function VerifyFlow() {
   const router = useRouter();
+  const { requestLink } = useParticipantAuth();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
@@ -51,9 +53,7 @@ function VerifyFlow() {
     setState("sending");
     setError("");
     try {
-      await api("/api/auth/request-link", {
-        body: { email, ...(eventSlug ? { eventSlug } : {}) },
-      });
+      await requestLink.mutateAsync({ email, ...(eventSlug ? { eventSlug } : {}) });
       setCountdown(REDIRECT_SECONDS);
       setState("sent");
     } catch (err) {
@@ -173,7 +173,7 @@ function VerifyFlow() {
 export default function VerifyPage() {
   return (
     <PortalShell eyebrow="Ticket portal" title="Get your ticket">
-      <Suspense>
+      <Suspense>derrickmugisha169@gmail.com
         <VerifyFlow />
       </Suspense>
     </PortalShell>

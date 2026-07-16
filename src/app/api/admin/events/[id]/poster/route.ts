@@ -8,12 +8,12 @@ import { ok, fail, unauthorized, notFound } from "@/lib/http";
 const MAX_BYTES = 8 * 1024 * 1024;
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin(req, { superOnly: true });
+  const admin = await requireAdmin(req);
   if (!admin) return unauthorized();
 
   const form = await req.formData().catch(() => null);
-  const file = form?.get("poster");
-  if (!(file instanceof File)) return fail("Attach an image as the 'poster' field");
+  const file = form?.get("image") ?? form?.get("poster");
+  if (!(file instanceof File)) return fail("Attach an image as the 'image' field");
   if (!file.type.startsWith("image/")) return fail("Only image files are accepted");
   if (file.size > MAX_BYTES) return fail("Image must be under 8MB");
 
@@ -23,9 +23,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!event) return notFound("Event");
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  event.posterUrl = await uploadImage(buffer, "posters");
+  const url = await uploadImage(buffer, "events");
+  /* the event gallery holds every uploaded image; newest first */
+  event.gallery = [url, ...event.gallery];
   await event.save();
   publishContentChange("events");
 
-  return ok({ posterUrl: event.posterUrl });
+  return ok({ url, gallery: event.gallery });
 }

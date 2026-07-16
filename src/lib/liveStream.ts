@@ -1,6 +1,7 @@
 "use client";
 
-import { getToken, type TokenKind } from "./client";
+import { bridgeGetToken } from "./authBridge";
+import type { Role } from "@/store/authSlice";
 import type { NotificationEvent, ScanEvent } from "./scanBus";
 
 /* One EventSource per tab, shared by every live widget (notification bell,
@@ -19,8 +20,8 @@ type Channel = {
 
 const channels = new Map<string, Channel>();
 
-export function subscribeLive(token: TokenKind, handlers: LiveHandlers): () => void {
-  const raw = getToken(token);
+export function subscribeLive(role: Role, handlers: LiveHandlers): () => void {
+  const raw = bridgeGetToken(role);
   if (!raw) return () => {};
 
   let channel = channels.get(raw);
