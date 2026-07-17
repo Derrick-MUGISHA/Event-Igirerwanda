@@ -138,7 +138,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               <img
                 src={t.qrDataUrl}
                 alt="Ticket QR"
-                className="size-48 rounded-lg border border-border bg-[#123522] p-2"
+                className="size-48 rounded-lg border border-border bg-[#f7f3ea] p-2"
               />
             ) : (
               <p className="py-6 text-sm text-muted-foreground">No QR available.</p>

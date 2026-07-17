@@ -87,8 +87,8 @@ const FLASH_META: Record<
   ERROR: { icon: HelpCircle, label: "Try again", ring: "bg-cream/10 text-cream ring-cream/30" },
 };
 
-/* focusMode isn't in the standard DOM constraint types yet */
-type AdvancedFocus = MediaTrackConstraintSet & { focusMode?: string };
+/* focusMode / zoom aren't in the standard DOM constraint types yet */
+type AdvancedFocus = MediaTrackConstraintSet & { focusMode?: string; zoom?: number };
 
 /* turn a getUserMedia failure into a message the gate staff can act on */
 function describeCameraError(err: unknown): string {
@@ -155,7 +155,7 @@ export default function Scanner({
   role: Role;
   profile?: { name?: string | null; email?: string | null };
 }) {
-  const [scanning, setScanning] = useState(false);
+  const [scanning, setScanning] = useState(true);
   const [error, setError] = useState("");
   const [flash, setFlash] = useState<{ id: number; kind: FlashKind } | null>(null);
   const lastRef = useRef<{ payload: string; at: number }>({ payload: "", at: 0 });
@@ -251,10 +251,6 @@ export default function Scanner({
         const size = Math.round(Math.min(vw, vh) * 0.92);
         return { width: size, height: size };
       },
-      aspectRatio: 1,
-      /* use the platform's native, hardware-accelerated detector when present
-         (Android/Chrome) — it locks far faster and with less holding-still */
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
     };
 
     /* Tune the live track for range + speed: continuous autofocus so a pass
@@ -267,13 +263,28 @@ export default function Scanner({
       const video = document.querySelector<HTMLVideoElement>("#qr-reader video");
       const track = (video?.srcObject as MediaStream | null)?.getVideoTracks?.()[0];
       if (!track?.getCapabilities) return;
-      const caps = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[] };
-      const constraints: MediaTrackConstraints & { advanced?: AdvancedFocus[] } = {};
-      if (caps.focusMode?.includes("continuous")) {
-        constraints.advanced = [{ focusMode: "continuous" }];
+      const caps = track.getCapabilities() as MediaTrackCapabilities & {
+        focusMode?: string[];
+        zoom?: { min: number; max: number };
+      };
+      const advanced: AdvancedFocus[] = [];
+      if (caps.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" });
+
+      const constraints: MediaTrackConstraints & { advanced?: AdvancedFocus[]; zoom?: number } = {};
+      /* pack in as many pixels as the sensor allows (up to QHD) so a QR held at
+         arm's length — ~50cm — still resolves enough modules to decode */
+      if (caps.width?.max) constraints.width = { ideal: Math.min(2560, caps.width.max) };
+      if (caps.height?.max) constraints.height = { ideal: Math.min(1440, caps.height.max) };
+
+      /* a gentle zoom magnifies a far pass so it reads from a distance without
+         moving it closer; continuous AF keeps it sharp at that range */
+      if (caps.zoom && caps.zoom.max >= 1.4) {
+        const z = Math.min(1.6, caps.zoom.max);
+        constraints.zoom = z;
+        advanced.push({ zoom: z });
       }
-      if (caps.width?.max) constraints.width = { ideal: Math.min(1920, caps.width.max) };
-      if (caps.height?.max) constraints.height = { ideal: Math.min(1080, caps.height.max) };
+
+      if (advanced.length) constraints.advanced = advanced;
       try {
         await track.applyConstraints(constraints);
       } catch {
@@ -286,7 +297,10 @@ export default function Scanner({
        the next start() throw "Cannot transition to a new state" — which is what
        surfaced as "Could not start the camera" when the first attempt failed. */
     const attempt = async (src: string | MediaTrackConstraints): Promise<Html5Qrcode> => {
-      const s = new Html5Qrcode("qr-reader");
+      const s = new Html5Qrcode("qr-reader", {
+        verbose: false,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      });
       try {
         await s.start(src, config, onDecode, () => {});
         return s;

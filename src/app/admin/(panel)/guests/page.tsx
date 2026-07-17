@@ -14,16 +14,7 @@ import { EmptyState, ErrorState, TableSkeleton } from "@/components/admin/states
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
-/* two-letter monogram for a guest's avatar fallback */
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+import { anonymousAvatar } from "@/lib/anonymousAvatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,17 +43,22 @@ export default function GuestsPage() {
       id: "name",
       header: "Guest",
       sortValue: (g) => g.name.toLowerCase(),
-      cell: (g) => (
-        <div className="flex items-center gap-3">
-          <Avatar>
-            <AvatarFallback>{initials(g.name)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate font-medium text-foreground">{g.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{g.email}</p>
+      cell: (g) => {
+        const a = anonymousAvatar(g.name);
+        return (
+          <div className="flex items-center gap-3">
+            <Avatar>
+              <AvatarFallback style={{ backgroundColor: a.bg }} className="text-base">
+                <span aria-hidden="true">{a.emoji}</span>
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">{g.name}</p>
+              <p className="truncate text-xs text-muted-foreground">{g.email}</p>
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       id: "type",

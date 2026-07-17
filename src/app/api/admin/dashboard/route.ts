@@ -3,10 +3,21 @@ import { Event, Guest, Participant, ScanLog, Ticket, eventDeadline } from "@/mod
 import { requireAdmin } from "@/lib/auth";
 import { ok, unauthorized } from "@/lib/http";
 
-/* Admin dashboard: global counts + attendance analytics (§6). */
+/* Admin dashboard: global counts + attendance analytics (§6). The payload is
+   the same for every admin and each load fires ~11 DB ops (2 aggregations +
+   counts), so cache it briefly in-process. Live check-ins already stream over
+   SSE, so a few seconds of staleness on the summary numbers is invisible.
+   Per-instance, like the app's other in-process caches. */
+const CACHE_TTL_MS = 15_000;
+let cache: { at: number; payload: unknown } | null = null;
+
 export async function GET(req: Request) {
   const admin = await requireAdmin(req);
   if (!admin) return unauthorized();
+
+  if (cache && Date.now() - cache.at < CACHE_TTL_MS) {
+    return ok(cache.payload);
+  }
 
   await dbConnect();
   const now = new Date();
@@ -75,7 +86,7 @@ export async function GET(req: Request) {
     ? Math.round((currentAttendance / ongoingIssued) * 100)
     : 0;
 
-  return ok({
+  const payload = {
     global: {
       totalEvents: events.length,
       totalGuests: participants + guests,
@@ -94,5 +105,7 @@ export async function GET(req: Request) {
       hourlyCheckins: hourly.map((h) => ({ hour: h._id, count: h.n })),
       dailyCheckins: daily.map((d) => ({ day: d._id, count: d.n })),
     },
-  });
+  };
+  cache = { at: Date.now(), payload };
+  return ok(payload);
 }

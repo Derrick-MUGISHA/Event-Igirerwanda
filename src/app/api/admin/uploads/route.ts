@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/lib/auth";
-import { uploadImage } from "@/lib/cloudinary";
+import { uploadImage, InvalidImageError } from "@/lib/cloudinary";
 import { ok, fail, unauthorized } from "@/lib/http";
 
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -18,6 +18,11 @@ export async function POST(req: Request) {
 
   const folder = typeof form?.get("folder") === "string" ? String(form.get("folder")) : "events";
   const buffer = Buffer.from(await file.arrayBuffer());
-  const url = await uploadImage(buffer, folder);
-  return ok({ url });
+  try {
+    const url = await uploadImage(buffer, folder);
+    return ok({ url });
+  } catch (err) {
+    if (err instanceof InvalidImageError) return fail(err.message);
+    throw err;
+  }
 }

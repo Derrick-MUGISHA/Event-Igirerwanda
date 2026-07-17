@@ -9,8 +9,13 @@ import { NextResponse, type NextRequest } from "next/server";
 type Window = { count: number; resetAt: number };
 const buckets = new Map<string, Window>();
 
-/* per-path-prefix limits: [max requests, window ms] */
+/* per-path-prefix limits: [max requests, window ms]. Password logins get a
+   tight budget over a long window — brute-forcing an admin/scanner password is
+   the highest-value attack, so 5 tries per 15 min per IP. The magic-link flow
+   is passwordless, so its budget is looser. */
 const LIMITS: { prefix: string; max: number; windowMs: number }[] = [
+  { prefix: "/api/admin/login", max: 5, windowMs: 15 * 60_000 },
+  { prefix: "/api/scanner/login", max: 5, windowMs: 15 * 60_000 },
   { prefix: "/api/auth/request-link", max: 5, windowMs: 60_000 },
   { prefix: "/api/auth/verify", max: 10, windowMs: 60_000 },
   { prefix: "/api/auth/refresh", max: 20, windowMs: 60_000 },
@@ -49,5 +54,11 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/auth/request-link", "/api/auth/verify", "/api/auth/refresh"],
+  matcher: [
+    "/api/admin/login",
+    "/api/scanner/login",
+    "/api/auth/request-link",
+    "/api/auth/verify",
+    "/api/auth/refresh",
+  ],
 };

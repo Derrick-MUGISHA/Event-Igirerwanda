@@ -17,6 +17,11 @@ export async function POST(req: Request) {
     return fail("Invalid email or password", 401);
   }
 
-  const accessToken = await signAuthToken({ kind: "admin", sub: admin._id.toString(), role: admin.role });
+  /* 12h covers a working event day; deactivation revokes sooner via the
+     per-request active-check in requireAdmin (see lib/auth.ts) */
+  const accessToken = await signAuthToken(
+    { kind: "admin", sub: admin._id.toString(), role: admin.role },
+    "12h"
+  );
   return ok({ accessToken, admin: { name: admin.name, email: admin.email, role: admin.role } });
 }

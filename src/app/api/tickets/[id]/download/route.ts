@@ -5,6 +5,7 @@ import { getAuth } from "@/lib/auth";
 import { ticketQrPngBuffer } from "@/lib/qr";
 import { ticketPdfBuffer } from "@/lib/ticketPdf";
 import { ticketIdentity, participantOwnsTicket } from "@/lib/tickets";
+import { fetchImageBuffer } from "@/lib/imageFetch";
 import { unauthorized, forbidden, notFound } from "@/lib/http";
 
 /* Stream the printable PDF pass. Owner (participant) or admin only. */
@@ -25,31 +26,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const [event, who] = await Promise.all([Event.findById(ticket.event), ticketIdentity(ticket)]);
 
-  let photo: Buffer | null = null;
-  if (who.photoUrl) {
-    try {
-      const res = await fetch(who.photoUrl);
-      if (res.ok) photo = Buffer.from(await res.arrayBuffer());
-    } catch {
-      /* the pass renders fine without the photo */
-    }
-  }
-
-  /* event poster → pass background */
-  let eventImage: Buffer | null = null;
+  /* fetch the profile photo and event poster concurrently — either can be slow
+     or missing without holding up (or breaking) the PDF */
   const posterUrl = event?.gallery?.[0] ?? null;
-  if (posterUrl) {
-    try {
-      if (posterUrl.startsWith("data:")) {
-        eventImage = Buffer.from(posterUrl.split(",")[1] ?? "", "base64");
-      } else {
-        const res = await fetch(posterUrl);
-        if (res.ok) eventImage = Buffer.from(await res.arrayBuffer());
-      }
-    } catch {
-      /* renders fine without it */
-    }
-  }
+  const [photo, eventImage] = await Promise.all([
+    fetchImageBuffer(who.photoUrl),
+    fetchImageBuffer(posterUrl),
+  ]);
 
   const qr = await ticketQrPngBuffer(ticket.code, {
     name: who.name,

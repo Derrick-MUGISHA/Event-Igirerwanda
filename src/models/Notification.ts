@@ -40,6 +40,9 @@ const NotificationSchema = new Schema<NotificationDoc>(
 
 NotificationSchema.index({ createdAt: -1 });
 NotificationSchema.index({ readAt: 1 });
+/* Scan alerts carry attendee names/events — don't retain that PII forever.
+   Mongo TTL sweeps notifications 90 days after creation. */
+NotificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 export const Notification: Model<NotificationDoc> =
   (models.Notification as Model<NotificationDoc>) ??

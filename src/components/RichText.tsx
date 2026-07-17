@@ -1,6 +1,16 @@
 /* Renders admin-authored rich text. Content created by the editor is HTML;
-   older plain-text content is shown with its line breaks preserved. A light
-   sanitiser strips scripts and inline handlers before rendering. */
+   older plain-text content is shown with its line breaks preserved. Rendering
+   goes through DOMPurify with a strict tag/attribute allow-list — a regex
+   sanitiser is bypassable, and this content reaches every public visitor. */
+
+import DOMPurify from "isomorphic-dompurify";
+
+/* only the formatting the editor can produce; everything else is stripped */
+const ALLOWED_TAGS = [
+  "p", "br", "b", "strong", "i", "em", "u", "s",
+  "ul", "ol", "li", "a", "h1", "h2", "h3", "h4", "blockquote", "code", "pre",
+];
+const ALLOWED_ATTR = ["href", "target", "rel"];
 
 function looksLikeHtml(s: string) {
   return /<\/?[a-z][\s\S]*>/i.test(s);
@@ -15,12 +25,13 @@ export function toPlainText(s: string) {
     .trim();
 }
 
-function sanitize(html: string) {
-  return html
-    .replace(/<\/?(script|style|iframe|object|embed)[^>]*>/gi, "")
-    .replace(/ on\w+="[^"]*"/gi, "")
-    .replace(/ on\w+='[^']*'/gi, "")
-    .replace(/javascript:/gi, "");
+function sanitize(html: string): string {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS,
+    ALLOWED_ATTR,
+    /* defence in depth: block javascript:/data: URLs and unknown protocols */
+    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|#|\/)/i,
+  });
 }
 
 export function RichText({

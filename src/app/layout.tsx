@@ -8,18 +8,25 @@ import "./globals.css";
 import Providers from "@/components/Providers";
 import { cn } from "@/lib/utils";
 
+/* Decorative fonts (display headings + condensed labels): don't preload them.
+   They cover only some text, so preloading every weight trips the browser's
+   "preloaded resource not used within a few seconds" warning — especially over
+   a slow tunnel. font-display: swap fills in the moment they load. */
 const marker = Permanent_Marker({
   variable: "--font-marker",
   subsets: ["latin"],
   weight: "400",
+  preload: false,
 });
 
 const barlow = Barlow_Condensed({
   variable: "--font-barlow",
   subsets: ["latin"],
   weight: ["500", "600", "700"],
+  preload: false,
 });
 
+/* the body typeface is used everywhere on first paint — keep it preloaded */
 const instrument = Instrument_Sans({
   variable: "--font-instrument",
   subsets: ["latin"],

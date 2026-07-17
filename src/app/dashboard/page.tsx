@@ -17,7 +17,6 @@ import {
 import IdCard from "@/components/portal/IdCard";
 import Confetti from "@/components/portal/Confetti";
 import { RichText } from "@/components/RichText";
-import { AVATAR_COUNT, avatarDataUrl, avatarToFile } from "@/lib/avatars";
 
 type Gender = "FEMALE" | "MALE" | "OTHER";
 type Relationship = "RELATIVE" | "FRIEND" | "COLLEAGUE" | "PARTNER" | "MENTOR" | "OTHER";
@@ -210,10 +209,8 @@ function CompleteCard({ me, onDone }: { me: Me; onDone: () => void }) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [gender, setGender] = useState<Gender | "">("");
-  const [mode, setMode] = useState<"upload" | "avatar">("upload");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [avatar, setAvatar] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -225,7 +222,7 @@ function CompleteCard({ me, onDone }: { me: Me; onDone: () => void }) {
     });
   }
 
-  const hasImage = mode === "upload" ? !!file : avatar !== null;
+  const hasImage = !!file;
   const detailsIncomplete =
     (nameMissing && !fullName) ||
     (phoneMissing && !phone) ||
@@ -245,12 +242,10 @@ function CompleteCard({ me, onDone }: { me: Me; onDone: () => void }) {
       if (Object.keys(profile).length > 0) {
         await api("/api/me", { method: "PATCH", role: "participant", body: profile });
       }
-      /* an uploaded photo, or the chosen avatar rasterised to a PNG — both
-         go through the same photo endpoint and become the profile picture */
-      const image =
-        mode === "avatar" && avatar !== null ? await avatarToFile(avatar) : file;
+      /* participants must add a real photo of themselves (anonymous avatars are
+         only for plus-ones / guests), so the uploaded file is the profile pic */
       const form = new FormData();
-      form.append("photo", image as File);
+      form.append("photo", file as File);
       await api("/api/me/photo", { role: "participant", form });
       onDone();
     } catch (err) {
@@ -304,81 +299,33 @@ function CompleteCard({ me, onDone }: { me: Me; onDone: () => void }) {
             ))}
           </Select>
         )}
-        {/* choose between a real photo and a built-in avatar */}
-        <div className="flex rounded-lg border border-line bg-panel-2 p-1">
-          {(
-            [
-              ["upload", "Upload a photo"],
-              ["avatar", "Use an avatar"],
-            ] as ["upload" | "avatar", string][]
-          ).map(([value, text]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setMode(value)}
-              aria-pressed={mode === value}
-              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
-                mode === value ? "bg-orange text-bg" : "text-cream hover:text-orange"
-              }`}
-            >
-              {text}
-            </button>
-          ))}
-        </div>
-
-        {mode === "upload" ? (
-          <div className="flex items-center gap-4">
-            {preview ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={preview}
-                alt="Photo preview"
-                className="h-20 w-20 shrink-0 rounded-xl border-2 border-orange object-cover"
-              />
-            ) : (
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-line text-2xl text-cream-dim">
-                ?
-              </div>
-            )}
-            <label className="flex-1 cursor-pointer">
-              <span className="label mb-1.5 block text-left text-xs font-semibold text-cream-dim">
-                Your photo
-              </span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => pick(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-cream-dim file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-panel-2 file:px-4 file:py-2 file:text-cream"
-              />
-            </label>
-          </div>
-        ) : (
-          <div>
-            <span className="label mb-2 block text-left text-xs font-semibold text-cream-dim">
-              Pick an avatar
-            </span>
-            <div className="flex flex-wrap gap-3">
-              {Array.from({ length: AVATAR_COUNT }, (_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setAvatar(i)}
-                  aria-pressed={avatar === i}
-                  className={`h-14 w-14 overflow-hidden rounded-full border-2 transition-transform hover:scale-105 ${
-                    avatar === i ? "border-orange" : "border-line"
-                  }`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={avatarDataUrl(i)}
-                    alt={`Avatar ${i + 1}`}
-                    className="h-full w-full object-cover"
-                  />
-                </button>
-              ))}
+        {/* participants add a real photo of themselves — this becomes the face
+            on their pass, matched against them at the gate */}
+        <div className="flex items-center gap-4">
+          {preview ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={preview}
+              alt="Photo preview"
+              className="h-20 w-20 shrink-0 rounded-xl border-2 border-orange object-cover"
+            />
+          ) : (
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-line text-2xl text-cream-dim">
+              ?
             </div>
-          </div>
-        )}
+          )}
+          <label className="flex-1 cursor-pointer">
+            <span className="label mb-1.5 block text-left text-xs font-semibold text-cream-dim">
+              A clear photo of yourself
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => pick(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-cream-dim file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-panel-2 file:px-4 file:py-2 file:text-cream"
+            />
+          </label>
+        </div>
         <Button
           type="submit"
           busy={busy}
@@ -566,6 +513,8 @@ function PlusOneCard({ me, onChanged }: { me: Me; onChanged: () => void }) {
             onClick={() => {
               navigator.clipboard.writeText(inviteUrl);
               setCopied(true);
+              /* revert the label so the user can tell a second copy worked */
+              setTimeout(() => setCopied(false), 2000);
             }}
           >
             {copied ? "Copied!" : "Copy link"}
