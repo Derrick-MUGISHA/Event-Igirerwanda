@@ -8,11 +8,13 @@ import {
   setRefreshCookie,
   clearRefreshCookie,
 } from "@/lib/session";
-import { ok, fail } from "@/lib/http";
+import { sameOriginOk } from "@/lib/csrf";
+import { ok, fail, forbidden } from "@/lib/http";
 
 /* Exchange the httpOnly refresh cookie for a new access token, rotating the
    refresh token in the process. */
-export async function POST() {
+export async function POST(req: Request) {
+  if (!sameOriginOk(req)) return forbidden();
   const raw = (await cookies()).get(REFRESH_COOKIE)?.value;
 
   await dbConnect();

@@ -78,5 +78,11 @@ const TicketSchema = new Schema<TicketDoc>(
   { timestamps: true }
 );
 
+/* `code` and `holderId` are already unique-indexed. These cover the admin list
+   filters (event + status) and the archived-holder lookups (holderType + event)
+   that otherwise scan the whole collection as ticket volume grows. */
+TicketSchema.index({ event: 1, status: 1 });
+TicketSchema.index({ holderType: 1, event: 1 });
+
 export const Ticket: Model<TicketDoc> =
   (models.Ticket as Model<TicketDoc>) ?? model<TicketDoc>("Ticket", TicketSchema);

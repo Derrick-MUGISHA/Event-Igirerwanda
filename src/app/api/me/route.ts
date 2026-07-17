@@ -20,6 +20,34 @@ export async function GET(req: Request) {
     Guest.findOne({ inviter: participant._id }),
   ]);
 
+  /* the plus-one's Guest record is deleted when they check in at the gate, so a
+     live lookup goes empty even though they attended. Fall back to the archived
+     holder snapshot on their ticket so the participant still sees them. */
+  let plusOneView = plusOne
+    ? {
+        fullName: plusOne.name,
+        email: plusOne.email,
+        gender: plusOne.gender ?? null,
+        relationship: plusOne.relationship ?? null,
+        status: plusOne.ticket ? "ISSUED" : "PENDING",
+      }
+    : null;
+  if (!plusOneView && participant.plusOne) {
+    const archived = await Ticket.findOne({
+      holderType: "Guest",
+      holderId: participant.plusOne,
+    });
+    if (archived?.holder) {
+      plusOneView = {
+        fullName: archived.holder.name,
+        email: archived.holder.email,
+        gender: null,
+        relationship: null,
+        status: "ATTENDED",
+      };
+    }
+  }
+
   return ok({
     attendee: {
       type: "PARTICIPANT",
@@ -49,13 +77,7 @@ export async function GET(req: Request) {
         eventName: event?.name,
       }),
     },
-    plusOne: plusOne && {
-      fullName: plusOne.name,
-      email: plusOne.email,
-      gender: null,
-      relationship: plusOne.guestType === "PLUS_ONE" ? "OTHER" : null,
-      status: plusOne.ticket ? "ISSUED" : "PENDING",
-    },
+    plusOne: plusOneView,
   });
 }
 

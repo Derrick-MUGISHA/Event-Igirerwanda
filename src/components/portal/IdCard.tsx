@@ -47,13 +47,14 @@ export default function IdCard({
   /* the pass carries a little cluster: the holder, whoever invited them
      (plus-ones), and the Igire Rwanda mark */
   const stack: StackItem[] = [
-    { src: photoUrl ?? null, alt: name, fallback: name.charAt(0).toUpperCase() },
+    { src: photoUrl ?? null, alt: name, fallback: name.charAt(0).toUpperCase(), seed: name },
     ...(inviterPhotoUrl || inviterName
       ? [
           {
             src: inviterPhotoUrl ?? null,
             alt: inviterName ? `Invited by ${inviterName}` : "Your host",
             fallback: (inviterName ?? "H").charAt(0).toUpperCase(),
+            seed: inviterName ?? name,
           } as StackItem,
         ]
       : []),
@@ -132,12 +133,12 @@ export default function IdCard({
       {/* tear-off stub with the QR */}
       <div className="flex shrink-0 flex-col items-center justify-center gap-2.5 p-5 sm:w-64 sm:p-6">
         <p className="label text-[10px] font-bold tracking-[0.3em] text-orange">Admit One</p>
-        {/* light-on-transparent QR with the Igire mark baked into the centre —
-            sits straight on the dark stub, no white card */}
+        {/* dark-on-cream QR with the Igire mark baked into the centre — a
+            proper scannable code (native scanners read dark-on-light) */}
         <img
           src={qrDataUrl}
           alt="Ticket QR code"
-          className="h-52 w-52 sm:h-56 sm:w-56"
+          className="h-52 w-52 rounded-xl sm:h-56 sm:w-56"
         />
         <p className="label max-w-52 truncate text-[9px] tracking-widest text-cream-dim">
           {code}

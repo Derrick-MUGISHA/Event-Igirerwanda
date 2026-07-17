@@ -25,5 +25,9 @@ const ScanLogSchema = new Schema<ScanLogDoc>(
   { timestamps: true }
 );
 
+/* the dashboard aggregates ACCEPTED scans by time window — index the pair it
+   filters and buckets on so those queries stay off a collection scan */
+ScanLogSchema.index({ result: 1, createdAt: 1 });
+
 export const ScanLog: Model<ScanLogDoc> =
   (models.ScanLog as Model<ScanLogDoc>) ?? model<ScanLogDoc>("ScanLog", ScanLogSchema);
