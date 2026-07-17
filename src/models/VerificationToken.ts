@@ -8,7 +8,7 @@ export interface VerificationTokenDoc {
   tokenHash: string;
   purpose: TokenPurpose;
   email?: string;
-  attendee: Types.ObjectId;
+  participant: Types.ObjectId;
   expiresAt: Date;
   usedAt?: Date | null;
   createdAt: Date;
@@ -20,8 +20,8 @@ const VerificationTokenSchema = new Schema<VerificationTokenDoc>(
     tokenHash: { type: String, required: true, unique: true },
     purpose: { type: String, enum: TOKEN_PURPOSES, required: true },
     email: { type: String, lowercase: true, trim: true },
-    /* LOGIN: the attendee logging in; PLUS_ONE_INVITE: the inviting participant */
-    attendee: { type: Schema.Types.ObjectId, ref: "Attendee", required: true },
+    /* LOGIN: the participant logging in; PLUS_ONE_INVITE: the inviting participant */
+    participant: { type: Schema.Types.ObjectId, ref: "Participant", required: true },
     expiresAt: { type: Date, required: true },
     usedAt: { type: Date, default: null },
   },

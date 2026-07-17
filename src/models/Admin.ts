@@ -1,6 +1,7 @@
 import { Schema, model, models, type Model, type Types } from "mongoose";
 
-export const ADMIN_ROLES = ["SUPER_ADMIN", "MINI_ADMIN"] as const;
+/* single staff admin role — Mini Admin was removed */
+export const ADMIN_ROLES = ["ADMIN"] as const;
 export type AdminRole = (typeof ADMIN_ROLES)[number];
 
 export interface AdminDoc {
@@ -20,7 +21,7 @@ const AdminSchema = new Schema<AdminDoc>(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ADMIN_ROLES, required: true },
+    role: { type: String, enum: ADMIN_ROLES, default: "ADMIN" },
     createdBy: { type: Schema.Types.ObjectId, ref: "Admin", default: null },
     active: { type: Boolean, default: true },
   },

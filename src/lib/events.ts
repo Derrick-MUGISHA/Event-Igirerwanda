@@ -23,13 +23,28 @@ export type VenueEvent = {
   price: string;
   /** one-liner on what the session is about, shown on the hero card */
   description: string;
+  /** the format the session takes (WORKSHOP, BOOTCAMP, …) */
+  type: string;
+  /** who is running the session */
+  organiser: string;
   /** promo poster (Cloudinary) — featured card art + hero background */
   posterUrl: string;
+  /** every uploaded image for the event */
+  gallery: string[];
   /** OPEN events are taking registrations right now */
   status: "OPEN" | "CLOSED";
   /** terms & conditions the attendee must accept before getting a ticket */
   rules: string[];
   soldOut?: boolean;
+  /** max attendees (0 = uncapped) */
+  capacity: number;
+  /** slots already reserved */
+  registeredParticipants: number;
+  /** slots left, or null when uncapped */
+  remainingSlots: number | null;
+  isFull: boolean;
+  /** clock+capacity lifecycle: Upcoming | Ongoing | Completed | Full */
+  lifecycleStatus: "Upcoming" | "Ongoing" | "Completed" | "Full";
 };
 
 export const CATEGORIES: EventCategory[] = [

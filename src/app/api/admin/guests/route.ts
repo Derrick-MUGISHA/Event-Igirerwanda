@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Attendee, Event, Ticket } from "@/models";
+import { Event, Guest, Participant, Ticket, GUEST_TYPES } from "@/models";
 import { requireAdmin } from "@/lib/auth";
 import { issueTicket, CapacityError } from "@/lib/tickets";
 import { notifyAdmins } from "@/lib/notify";
@@ -11,47 +11,42 @@ export async function GET(req: Request) {
   if (!admin) return unauthorized();
 
   await dbConnect();
-  /* guests are tied to the admin who added them; the super admin sees all */
-  const filter =
-    admin.role === "SUPER_ADMIN"
-      ? { type: "GUEST" as const }
-      : { type: "GUEST" as const, addedBy: admin.id };
-  const guests = await Attendee.find(filter)
+  const guests = await Guest.find()
     .sort({ createdAt: -1 })
-    .populate("addedBy", "name")
-    .populate("event", "name");
-  const tickets = await Ticket.find({ attendee: { $in: guests.map((g) => g._id) } });
-  const ticketByAttendee = new Map(tickets.map((t) => [t.attendee.toString(), t]));
+    .populate("event", "name")
+    .populate("inviter", "name");
+  const tickets = await Ticket.find({
+    holderType: "Guest",
+    holderId: { $in: guests.map((g) => g._id) },
+  });
+  const ticketByHolder = new Map(tickets.map((t) => [t.holderId.toString(), t]));
 
   /* guests who already checked in live on as ticket holder snapshots */
-  const holderFilter: Record<string, unknown> = { "holder.type": "GUEST" };
-  if (admin.role !== "SUPER_ADMIN") holderFilter["holder.addedBy"] = admin.id;
-  const attended = await Ticket.find(holderFilter)
+  const attended = await Ticket.find({ holderType: "Guest", "holder.name": { $exists: true } })
     .sort({ scannedAt: -1 })
-    .populate("event", "name")
-    .populate("holder.addedBy", "name");
+    .populate("event", "name");
 
   return ok({
     guests: [
       ...guests.map((g) => ({
         id: g._id,
-        fullName: g.fullName,
+        name: g.name,
         email: g.email,
-        phone: g.phone,
-        addedBy: (g.addedBy as unknown as { name?: string } | null)?.name ?? null,
+        guestType: g.guestType,
+        invitedBy: (g.inviter as unknown as { name?: string } | null)?.name ?? null,
         eventName: (g.event as unknown as { name?: string } | null)?.name ?? null,
         addedAt: g.createdAt,
         ticket: (() => {
-          const t = ticketByAttendee.get(g._id.toString());
+          const t = ticketByHolder.get(g._id.toString());
           return t ? { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null } : null;
         })(),
       })),
       ...attended.map((t) => ({
         id: t._id,
-        fullName: t.holder!.fullName,
+        name: t.holder!.name,
         email: t.holder!.email,
-        phone: t.holder!.phone ?? undefined,
-        addedBy: (t.holder!.addedBy as unknown as { name?: string } | null)?.name ?? null,
+        guestType: t.holder!.label ?? "GENERAL",
+        invitedBy: null,
         eventName: (t.event as unknown as { name?: string } | null)?.name ?? null,
         addedAt: t.issuedAt,
         ticket: { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null },
@@ -61,9 +56,11 @@ export async function GET(req: Request) {
 }
 
 const Body = z.object({
-  fullName: z.string().min(2),
+  name: z.string().min(2),
   email: z.string().email(),
-  phone: z.string().min(6).optional(),
+  guestType: z.enum(GUEST_TYPES).default("GENERAL"),
+  /* optional: the participant who invited this guest */
+  inviterId: z.string().min(1).optional(),
   eventId: z.string().min(1),
 });
 
@@ -72,24 +69,27 @@ export async function POST(req: Request) {
   if (!admin) return unauthorized();
 
   const parsed = Body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return fail("Full name, valid email and event are required");
+  if (!parsed.success) return fail("Name, valid email and event are required");
 
   await dbConnect();
   const event = await Event.findById(parsed.data.eventId);
   if (!event) return fail("Event not found", 404);
 
+  let inviterId: string | undefined;
+  if (parsed.data.inviterId) {
+    const inviter = await Participant.findById(parsed.data.inviterId);
+    if (!inviter) return fail("Inviter not found", 404);
+    inviterId = inviter._id.toString();
+  }
+
   let guest;
   try {
-    guest = await Attendee.create({
+    guest = await Guest.create({
       event: event._id,
-      type: "GUEST",
-      fullName: parsed.data.fullName,
+      name: parsed.data.name,
       email: parsed.data.email.toLowerCase(),
-      phone: parsed.data.phone,
-      addedBy: admin.id,
-      /* guests are vouched for by the admin — no email verification step */
-      status: "COMPLETE",
-      emailVerifiedAt: new Date(),
+      guestType: parsed.data.guestType,
+      inviter: inviterId ?? null,
     });
   } catch (err: unknown) {
     if (err && typeof err === "object" && "code" in err && err.code === 11000) {
@@ -99,18 +99,18 @@ export async function POST(req: Request) {
   }
 
   try {
-    const ticket = await issueTicket(guest);
+    const ticket = await issueTicket({ kind: "Guest", doc: guest });
     void notifyAdmins({
       kind: "GUEST_ADDED",
       severity: "info",
-      title: `Guest ticket issued to ${guest.fullName}`,
+      title: `Guest ticket issued to ${guest.name}`,
       body: `${event.name} · invited by an admin, ticket emailed to ${guest.email}.`,
       eventId: event._id,
     });
-    return ok({ guest: { id: guest._id, fullName: guest.fullName, ticketCode: ticket.code } }, 201);
+    return ok({ guest: { id: guest._id, name: guest.name, ticketCode: ticket.code } }, 201);
   } catch (err) {
     if (err instanceof CapacityError) {
-      await Attendee.deleteOne({ _id: guest._id });
+      await Guest.deleteOne({ _id: guest._id });
       return fail(err.message, 409);
     }
     throw err;

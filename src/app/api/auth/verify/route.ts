@@ -1,8 +1,10 @@
 import { createHash } from "crypto";
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Attendee, VerificationToken } from "@/models";
-import { signAuthToken } from "@/lib/auth";
+import { Event, Participant, VerificationToken } from "@/models";
+import { signParticipantAccessToken } from "@/lib/auth";
+import { issueRefreshToken, setRefreshCookie } from "@/lib/session";
+import { sendRegistrationConfirmation } from "@/lib/mailer";
 import { ok, fail } from "@/lib/http";
 
 const Body = z.object({ token: z.string().min(10) });
@@ -20,15 +22,31 @@ export async function POST(req: Request) {
   );
   if (!vt) return fail("This link is invalid or has expired. Request a new one.", 400);
 
-  const attendee = await Attendee.findById(vt.attendee);
-  if (!attendee) return fail("Registration not found", 404);
+  const participant = await Participant.findById(vt.participant);
+  if (!participant) return fail("Registration not found", 404);
 
-  if (!attendee.emailVerifiedAt) {
-    attendee.emailVerifiedAt = new Date();
-    if (attendee.status === "PENDING") attendee.status = "VERIFIED";
-    await attendee.save();
+  const id = participant._id.toString();
+  const firstVerification = participant.status === "PENDING";
+  if (firstVerification) {
+    /* first successful verification moves them out of PENDING */
+    participant.status = "VERIFIED";
+    /* confirm their registration once — the lookup and email are fully
+       deferred so they never hold up the response the visitor is waiting on */
+    void (async () => {
+      const event = await Event.findById(participant.event);
+      if (event) {
+        await sendRegistrationConfirmation(participant.email, participant.name, event.name);
+      }
+    })().catch((err) => console.error("registration confirmation email failed", err));
   }
 
-  const accessToken = await signAuthToken({ kind: "attendee", sub: attendee._id.toString() });
-  return ok({ accessToken });
+  /* mint the tokens (and persist the status bump) in one round trip */
+  const [accessToken, refresh] = await Promise.all([
+    signParticipantAccessToken(id),
+    issueRefreshToken(id),
+    firstVerification ? participant.save() : Promise.resolve(),
+  ]);
+
+  const res = ok({ accessToken, expiresIn: 900 });
+  return setRefreshCookie(res, refresh);
 }

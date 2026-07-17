@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const token = new URL(req.url).searchParams.get("token") ?? "";
   const auth = await verifyAuthToken(token);
-  if (!auth || (auth.kind !== "admin" && auth.kind !== "org")) {
+  if (!auth || (auth.kind !== "admin" && auth.kind !== "scanner")) {
     return new Response("Unauthorized", { status: 401 });
   }
 

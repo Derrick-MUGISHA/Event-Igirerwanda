@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import Image from "next/image";
 import { StatusBadge } from "./ui";
+import AvatarStack, { type StackItem } from "./AvatarStack";
 
 /* Event pass styled like a real ticket: main body + a perforated
    tear-off stub carrying the QR code. Mirrored by the ticket email
@@ -16,6 +17,8 @@ export default function IdCard({
   qrDataUrl,
   code,
   status,
+  inviterPhotoUrl,
+  inviterName,
 }: {
   name: string;
   /** subtitle under the name — position, cohort, or relationship */
@@ -28,6 +31,9 @@ export default function IdCard({
   qrDataUrl: string;
   code: string;
   status: string;
+  /** for a plus-one: the photo of whoever invited them */
+  inviterPhotoUrl?: string | null;
+  inviterName?: string | null;
 }) {
   const d = eventDate ? new Date(eventDate) : null;
   const dateLabel = d
@@ -37,6 +43,22 @@ export default function IdCard({
     ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
     : "";
   const typeLabel = type === "PLUS_ONE" ? "GUEST" : type;
+
+  /* the pass carries a little cluster: the holder, whoever invited them
+     (plus-ones), and the Igire Rwanda mark */
+  const stack: StackItem[] = [
+    { src: photoUrl ?? null, alt: name, fallback: name.charAt(0).toUpperCase() },
+    ...(inviterPhotoUrl || inviterName
+      ? [
+          {
+            src: inviterPhotoUrl ?? null,
+            alt: inviterName ? `Invited by ${inviterName}` : "Your host",
+            fallback: (inviterName ?? "H").charAt(0).toUpperCase(),
+          } as StackItem,
+        ]
+      : []),
+    { src: "/iro-logo.svg", alt: "Igire Rwanda", contain: true },
+  ];
 
   return (
     <div className="relative flex flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-[0_18px_40px_-18px_rgba(0,0,0,0.7)] sm:flex-row">
@@ -66,17 +88,7 @@ export default function IdCard({
           </p>
 
           <div className="mt-4 flex items-center gap-4">
-            {photoUrl ? (
-              <img
-                src={photoUrl}
-                alt={`Photo of ${name}`}
-                className="h-20 w-20 shrink-0 rounded-xl border-2 border-orange object-cover"
-              />
-            ) : (
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-line text-2xl text-cream-dim">
-                ?
-              </div>
-            )}
+            <AvatarStack items={stack} size={60} />
             <div className="min-w-0">
               <p className="label text-[10px] font-semibold text-cream-dim">Admits</p>
               <p className="display truncate text-2xl uppercase leading-tight text-cream">
@@ -118,14 +130,16 @@ export default function IdCard({
       </div>
 
       {/* tear-off stub with the QR */}
-      <div className="flex shrink-0 flex-col items-center justify-center gap-2 p-5 sm:w-56 sm:p-6">
+      <div className="flex shrink-0 flex-col items-center justify-center gap-2.5 p-5 sm:w-64 sm:p-6">
         <p className="label text-[10px] font-bold tracking-[0.3em] text-orange">Admit One</p>
+        {/* light-on-transparent QR with the Igire mark baked into the centre —
+            sits straight on the dark stub, no white card */}
         <img
           src={qrDataUrl}
           alt="Ticket QR code"
-          className="h-36 w-36 rounded-lg bg-white p-1.5"
+          className="h-52 w-52 sm:h-56 sm:w-56"
         />
-        <p className="label max-w-44 truncate text-[9px] tracking-widest text-cream-dim">
+        <p className="label max-w-52 truncate text-[9px] tracking-widest text-cream-dim">
           {code}
         </p>
         <StatusBadge value={status} />

@@ -1,8 +1,8 @@
-import { createHash, randomBytes } from "crypto";
+import { createHash } from "crypto";
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Attendee, Event, VerificationToken, GENDERS, RELATIONSHIPS } from "@/models";
-import { sendMagicLinkEmail } from "@/lib/mailer";
+import { Event, Guest, Participant, VerificationToken } from "@/models";
+import { issueTicket, CapacityError } from "@/lib/tickets";
 import { ok, fail } from "@/lib/http";
 
 type Ctx = { params: Promise<{ token: string }> };
@@ -23,53 +23,48 @@ export async function GET(_req: Request, ctx: Ctx) {
   const invite = await findInvite(token);
   if (!invite) return fail("This invite link is invalid or has expired", 404);
 
-  const participant = await Attendee.findById(invite.attendee);
+  const participant = await Participant.findById(invite.participant);
   const event = participant && (await Event.findById(participant.event));
   if (!participant || !event) return fail("This invite link is invalid or has expired", 404);
-  if (await Attendee.findOne({ linkedParticipant: participant._id })) {
+  if (await Guest.findOne({ inviter: participant._id })) {
     return fail("This participant already has a plus-one", 409);
   }
 
   return ok({
-    participantName: participant.fullName,
+    participantName: participant.name,
     eventName: event.name,
     email: invite.email ?? null,
   });
 }
 
-/* the plus-one is a child of the inviting participant's registration —
-   only email, gender and their connection to the inviter are asked for */
+/* the plus-one names themselves and gives an email; their ticket is emailed */
 const Body = z.object({
+  name: z.string().min(2).optional(),
   email: z.string().email(),
-  gender: z.enum(GENDERS),
-  relationship: z.enum(RELATIONSHIPS),
 });
 
 export async function POST(req: Request, ctx: Ctx) {
   const { token } = await ctx.params;
   const parsed = Body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return fail("A valid email, gender and relationship are required");
+  if (!parsed.success) return fail("A valid email is required");
 
   await dbConnect();
   const invite = await findInvite(token);
   if (!invite) return fail("This invite link is invalid or has expired", 404);
 
-  const participant = await Attendee.findById(invite.attendee);
+  const participant = await Participant.findById(invite.participant);
   const event = participant && (await Event.findOne({ _id: participant.event, status: "OPEN" }));
   if (!participant || !event) return fail("Registration for this event is closed", 409);
 
   const email = parsed.data.email.toLowerCase();
-  let plusOne;
+  let guest;
   try {
-    plusOne = await Attendee.create({
+    guest = await Guest.create({
       event: participant.event,
-      type: "PLUS_ONE",
-      fullName: `Guest of ${participant.fullName}`,
+      name: parsed.data.name ?? `Guest of ${participant.name}`,
       email,
-      gender: parsed.data.gender,
-      relationship: parsed.data.relationship,
-      linkedParticipant: participant._id,
-      status: "PENDING",
+      guestType: "PLUS_ONE",
+      inviter: participant._id,
     });
   } catch (err: unknown) {
     if (err && typeof err === "object" && "code" in err && err.code === 11000) {
@@ -80,20 +75,15 @@ export async function POST(req: Request, ctx: Ctx) {
   invite.usedAt = new Date();
   await invite.save();
 
-  const loginToken = randomBytes(32).toString("hex");
-  await VerificationToken.create({
-    tokenHash: createHash("sha256").update(loginToken).digest("hex"),
-    purpose: "LOGIN",
-    email,
-    attendee: plusOne._id,
-    expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
-  });
-  await sendMagicLinkEmail(
-    email,
-    plusOne.fullName,
-    `${process.env.NEXT_PUBLIC_APP_URL}/verify/${loginToken}`,
-    event.name
-  );
-
-  return ok({ message: "Check your inbox to verify your email and get your ticket." }, 201);
+  try {
+    await issueTicket({ kind: "Guest", doc: guest });
+    await Participant.updateOne({ _id: participant._id }, { plusOne: guest._id });
+    return ok({ message: "You're all set — check your inbox for your ticket." }, 201);
+  } catch (err) {
+    if (err instanceof CapacityError) {
+      await Guest.deleteOne({ _id: guest._id });
+      return fail(err.message, 409);
+    }
+    throw err;
+  }
 }

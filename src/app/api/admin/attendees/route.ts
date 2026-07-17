@@ -1,17 +1,20 @@
+import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import {
-  ATTENDEE_STATUSES,
-  ATTENDEE_TYPES,
-  Attendee,
-  COHORTS,
+  Event,
+  GENDERS,
+  PARTICIPANT_STATUSES,
+  Participant,
+  REGISTRATION_STATUSES,
+  STACKS,
   Ticket,
-  type AttendeeDoc,
-  type AttendeeStatus,
-  type AttendeeType,
-  type Cohort,
+  type ParticipantDoc,
+  type ParticipantStatus,
+  type RegistrationStatus,
+  type Stack,
 } from "@/models";
 import { requireAdmin } from "@/lib/auth";
-import { ok, unauthorized } from "@/lib/http";
+import { ok, fail, unauthorized } from "@/lib/http";
 import type { QueryFilter } from "mongoose";
 
 function pick<T extends string>(value: string | null, allowed: readonly T[]): T | undefined {
@@ -23,90 +26,135 @@ export async function GET(req: Request) {
   if (!admin) return unauthorized();
 
   const url = new URL(req.url);
-  const filter: QueryFilter<AttendeeDoc> = {};
-  const type = pick<AttendeeType>(url.searchParams.get("type"), ATTENDEE_TYPES);
-  if (type) filter.type = type;
-  const cohort = pick<Cohort>(url.searchParams.get("cohort"), COHORTS);
-  if (cohort) filter.cohort = cohort;
-  const status = pick<AttendeeStatus>(url.searchParams.get("status"), ATTENDEE_STATUSES);
+  const filter: QueryFilter<ParticipantDoc> = {};
+  const stack = pick<Stack>(url.searchParams.get("stack"), STACKS);
+  if (stack) filter.stack = stack;
+  const status = pick<ParticipantStatus>(url.searchParams.get("status"), PARTICIPANT_STATUSES);
   if (status) filter.status = status;
+  const registrationStatus = pick<RegistrationStatus>(
+    url.searchParams.get("registrationStatus"),
+    REGISTRATION_STATUSES
+  );
+  if (registrationStatus) filter.registrationStatus = registrationStatus;
   const eventId = url.searchParams.get("event");
   if (eventId) filter.event = eventId;
   const q = url.searchParams.get("q");
   if (q) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-    filter.$or = [{ fullName: rx }, { email: rx }, { phone: rx }];
+    filter.$or = [{ name: rx }, { email: rx }, { phone: rx }];
   }
 
   await dbConnect();
-  const attendees = await Attendee.find(filter)
+  const participants = await Participant.find(filter)
     .sort({ createdAt: 1 })
     .limit(500)
-    .populate("event", "name date status");
-  const tickets = await Ticket.find({ attendee: { $in: attendees.map((a) => a._id) } });
-  const ticketByAttendee = new Map(tickets.map((t) => [t.attendee.toString(), t]));
-
-  type EventRef = { _id: unknown; name?: string; date?: Date; status?: string } | null;
-  const eventOf = (e: EventRef) =>
-    e ? { id: e._id, name: e.name, date: e.date, status: e.status } : null;
-
-  const live = attendees.map((a) => {
-    const event = a.event as unknown as EventRef;
-    return {
-      id: a._id,
-      type: a.type,
-      fullName: a.fullName,
-      email: a.email,
-      phone: a.phone,
-      cohort: a.cohort,
-      status: a.status,
-      photoUrl: a.photoUrl ?? null,
-      event: eventOf(event),
-      ticket: (() => {
-        const t = ticketByAttendee.get(a._id.toString());
-        return t ? { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null } : null;
-      })(),
-    };
+    .populate("event", "name startTime status");
+  const tickets = await Ticket.find({
+    holderType: "Participant",
+    holderId: { $in: participants.map((p) => p._id) },
   });
+  const ticketByHolder = new Map(tickets.map((t) => [t.holderId.toString(), t]));
 
-  /* checked-in people live on as ticket holder snapshots — their attendee
-     record is deleted at the gate so they can register for other events */
-  const holderFilter: Record<string, unknown> = { "holder.fullName": { $exists: true } };
-  if (type) holderFilter["holder.type"] = type;
-  if (cohort) holderFilter["holder.cohort"] = cohort;
+  type EventRef = { _id: unknown; name?: string; startTime?: Date; status?: string } | null;
+  const eventOf = (e: EventRef) =>
+    e ? { id: e._id, name: e.name, startTime: e.startTime, status: e.status } : null;
+
+  const live = participants.map((p) => ({
+    id: p._id,
+    type: "PARTICIPANT" as const,
+    name: p.name,
+    email: p.email,
+    phone: p.phone,
+    stack: p.stack,
+    gender: p.gender ?? null,
+    status: p.status,
+    registrationStatus: p.registrationStatus,
+    profilePicture: p.profilePicture ?? null,
+    event: eventOf(p.event as unknown as EventRef),
+    ticket: (() => {
+      const t = ticketByHolder.get(p._id.toString());
+      return t ? { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null } : null;
+    })(),
+  }));
+
+  /* checked-in participants live on as ticket holder snapshots — their
+     Participant record is deleted at the gate so they can register elsewhere */
+  const holderFilter: Record<string, unknown> = {
+    holderType: "Participant",
+    "holder.name": { $exists: true },
+  };
   if (eventId) holderFilter.event = eventId;
   if (q) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-    holderFilter.$or = [
-      { "holder.fullName": rx },
-      { "holder.email": rx },
-      { "holder.phone": rx },
-    ];
+    holderFilter.$or = [{ "holder.name": rx }, { "holder.email": rx }];
   }
-  /* status filter: an archived holder is by definition COMPLETE */
+  /* an archived holder is by definition COMPLETE */
   const attended =
     status && status !== "COMPLETE"
       ? []
       : await Ticket.find(holderFilter)
           .sort({ scannedAt: -1 })
           .limit(500)
-          .populate("event", "name date status");
+          .populate("event", "name startTime status");
 
   const archived = attended.map((t) => {
     const h = t.holder!;
     return {
       id: t._id,
-      type: h.type,
-      fullName: h.fullName,
+      type: "PARTICIPANT" as const,
+      name: h.name,
       email: h.email,
       phone: h.phone ?? undefined,
-      cohort: h.cohort ?? null,
+      stack: h.label ?? null,
+      gender: null,
       status: "COMPLETE",
-      photoUrl: h.photoUrl ?? null,
+      profilePicture: h.photoUrl ?? null,
       event: eventOf(t.event as unknown as EventRef),
       ticket: { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null },
     };
   });
 
   return ok({ attendees: [...live, ...archived] });
+}
+
+const CreateBody = z.object({
+  eventId: z.string().min(1),
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().min(6).optional(),
+  stack: z.enum(STACKS).optional(),
+  gender: z.enum(GENDERS).optional(),
+});
+
+/* Admin: register a participant directly. No ticket is issued here — use the
+   ticket generate endpoint (or the participant's own completion flow). */
+export async function POST(req: Request) {
+  const admin = await requireAdmin(req);
+  if (!admin) return unauthorized();
+
+  const parsed = CreateBody.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return fail("Name, valid email and event are required");
+
+  await dbConnect();
+  const event = await Event.findById(parsed.data.eventId);
+  if (!event) return fail("Event not found", 404);
+
+  try {
+    const p = await Participant.create({
+      event: event._id,
+      name: parsed.data.name,
+      email: parsed.data.email.toLowerCase(),
+      phone: parsed.data.phone,
+      stack: parsed.data.stack ?? null,
+      gender: parsed.data.gender ?? null,
+      status: "PENDING",
+      registrationStatus: "APPROVED",
+    });
+    return ok({ participant: { id: p._id, name: p.name, email: p.email } }, 201);
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "code" in err && err.code === 11000) {
+      return fail("That email is already registered for this event", 409);
+    }
+    throw err;
+  }
 }

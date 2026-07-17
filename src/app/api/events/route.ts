@@ -2,6 +2,7 @@ import { dbConnect } from "@/lib/db";
 import { Event } from "@/models";
 import { ok } from "@/lib/http";
 import { subscribeContentChanges } from "@/lib/scanBus";
+import { toVenueEvent } from "@/lib/eventView";
 import type { VenueEvent } from "@/lib/events";
 
 /* Public events feed for the landing page calendar / up-next card.
@@ -21,38 +22,15 @@ if (!globalSub.__iemsEventsCacheSub) {
   });
 }
 
-function isoDay(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
-}
-
-function clockTime(d: Date): string {
-  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-}
-
 async function loadEvents(): Promise<VenueEvent[]> {
   await dbConnect();
-  const events = await Event.find({ status: { $ne: "DRAFT" }, isPublic: true }).sort({
-    date: 1,
-  });
-  return events.map((e) => ({
-    id: e.slug,
-    title: e.name,
-    category: e.category,
-    date: isoDay(e.date),
-    time: clockTime(e.date),
-    endTime: e.endDate ? clockTime(e.endDate) : "",
-    startsAt: e.date.toISOString(),
-    endsAt: e.endDate ? e.endDate.toISOString() : null,
-    space: e.venue,
-    price: e.price,
-    description: e.description,
-    posterUrl: e.posterUrl ?? "",
-    status: e.status === "OPEN" ? ("OPEN" as const) : ("CLOSED" as const),
-    rules: e.rules,
-    soldOut: e.status === "CLOSED",
-  }));
+  const events = await Event.find({
+    status: { $ne: "DRAFT" },
+    isPublished: true,
+    archivedAt: null,
+  }).sort({ startTime: 1 });
+  const now = new Date();
+  return events.map((e) => toVenueEvent(e, now));
 }
 
 export async function GET() {

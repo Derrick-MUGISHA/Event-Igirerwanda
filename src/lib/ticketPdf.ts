@@ -23,6 +23,8 @@ export type TicketPdfInput = {
   code: string;
   qrPng: Buffer;
   photo?: Buffer | null;
+  /** event poster, drawn as the ticket's background */
+  eventImage?: Buffer | null;
 };
 
 /* Renders the event pass as a one-page landscape PDF ticket that matches
@@ -35,9 +37,22 @@ export function ticketPdfBuffer(t: TicketPdfInput): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    /* background + card */
+    /* background + card: the event poster fills the card, dimmed under a dark
+       wash so the pass text and QR stay legible over it */
     doc.rect(0, 0, W, H).fill(BG);
-    doc.roundedRect(10, 10, W - 20, H - 20, 14).fill(PANEL);
+    doc.save();
+    doc.roundedRect(10, 10, W - 20, H - 20, 14).clip();
+    doc.rect(10, 10, W - 20, H - 20).fill(PANEL);
+    if (t.eventImage) {
+      try {
+        doc.image(t.eventImage, 10, 10, { cover: [W - 20, H - 20], align: "center", valign: "center" });
+        doc.rect(10, 10, W - 20, H - 20).fillOpacity(0.8).fill(BG);
+        doc.fillOpacity(1);
+      } catch {
+        /* unsupported image — the panel fill already stands in */
+      }
+    }
+    doc.restore();
 
     /* header band */
     doc.save();
@@ -136,9 +151,10 @@ export function ticketPdfBuffer(t: TicketPdfInput): Promise<Buffer> {
         characterSpacing: 3,
       });
 
-    const qrSize = 118;
-    doc.roundedRect(stubCenter - qrSize / 2 - 6, 82, qrSize + 12, qrSize + 12, 8).fill("#ffffff");
-    doc.image(t.qrPng, stubCenter - qrSize / 2, 88, { width: qrSize, height: qrSize });
+    /* QR sits straight on the ticket — no white card; it's light-on-transparent
+       with the Igire mark already baked into the centre */
+    const qrSize = 128;
+    doc.image(t.qrPng, stubCenter - qrSize / 2, 84, { width: qrSize, height: qrSize });
 
     doc
       .font("Helvetica")
