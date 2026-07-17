@@ -13,7 +13,7 @@ import { type VenueEvent } from "@/lib/events";
 
 /* Clicking any event on the site funnels through here: the terms &
    conditions pop out first, and only after the visitor agrees do we
-   move on to the email verification page. */
+   take them to the event's own view page. */
 
 const EventFlowContext = createContext<{
   openEvent: (event: VenueEvent) => void;
@@ -56,10 +56,12 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
     };
   }, [event, close]);
 
+  /* terms accepted → head to the event's own view page */
   const proceed = () => {
     if (!event || !agreed) return;
+    const id = event.id;
     close();
-    router.push(`/verify?event=${encodeURIComponent(event.id)}`);
+    router.push(`/events/${encodeURIComponent(id)}`);
   };
 
   const rules = event && event.rules.length > 0 ? event.rules : DEFAULT_RULES;
@@ -91,11 +93,7 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
               onClick={(e) => e.stopPropagation()}
               className="w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl"
             >
-              {/* header carries the event's category colour */}
-              <div
-                className="h-1.5 w-full"
-                // style={{ backgroundColor: CATEGORY_COLORS[event.category] }}
-              />
+              <div className="h-1.5 w-full bg-orange" />
               {/* the event's poster leads the dialog when one is uploaded */}
               {event.posterUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -147,8 +145,8 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
                 </div>
 
                 <p className="mt-5 text-sm text-cream-dim">
-                  Please read and accept the terms below before we send you to
-                  the ticket verification step.
+                  Please read and accept the terms below before we take you to the
+                  event page.
                 </p>
 
                 <ul className="mt-4 space-y-2.5 rounded-xl border border-line bg-panel-2 p-4">
@@ -187,7 +185,7 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     onClick={close}
-                    className="rounded-lg border border-line bg-panel-2 px-5 py-2.5 text-sm font-semibold text-cream transition-colors hover:border-orange hover:text-orange cursor-pointer"
+                    className="cursor-pointer rounded-lg border border-line bg-panel-2 px-5 py-2.5 text-sm font-semibold text-cream transition-colors hover:border-orange hover:text-orange"
                   >
                     Cancel
                   </button>
@@ -195,7 +193,7 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
                     type="button"
                     onClick={proceed}
                     disabled={!agreed}
-                    className="rounded-lg bg-orange px-5 py-2.5 text-sm font-semibold text-bg transition-colors enabled:hover:bg-orange-deep disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                    className="cursor-pointer rounded-lg bg-orange px-5 py-2.5 text-sm font-semibold text-bg transition-colors enabled:hover:bg-orange-deep disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Agree &amp; continue
                   </button>

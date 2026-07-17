@@ -2,32 +2,32 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError, setToken } from "@/lib/client";
+import { ApiError } from "@/lib/client";
+import { useAdminAuth } from "@/context/AuthContext";
 import { PortalShell, Panel, Field, Button, Note } from "@/components/portal/ui";
+import PasswordField from "@/components/portal/PasswordField";
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const { login } = useAdminAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /* stays true from a successful sign-in through the redirect, so a second
+     click can't fire another request while we're on our way out */
+  const [leaving, setLeaving] = useState(false);
+  const busy = login.isPending || leaving;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    if (busy) return;
     setError("");
     try {
-      const { accessToken, admin } = await api<{
-        accessToken: string;
-        admin: { role: string; name: string };
-      }>("/api/admin/login", { body: { email, password } });
-      setToken("admin", accessToken);
-      localStorage.setItem("iems_admin_role", admin.role);
-      localStorage.setItem("iems_admin_name", admin.name);
+      await login.mutateAsync({ email, password });
+      setLeaving(true);
       router.push("/admin/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
-      setBusy(false);
     }
   }
 
@@ -35,15 +35,25 @@ export default function AdminLoginPage() {
     <PortalShell eyebrow="Staff only" title="Admin sign in">
       <Panel>
         <form onSubmit={submit} className="space-y-4">
-          <Field label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           <Field
+            label="Email"
+            type="email"
+            name="email"
+            autoComplete="username"
+            autoFocus
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <PasswordField
             label="Password"
-            type="password"
+            name="password"
+            autoComplete="current-password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <Button type="submit" disabled={busy} className="w-full">
+          <Button type="submit" busy={busy} className="w-full">
             {busy ? "Signing in…" : "Sign in"}
           </Button>
           {error && <Note tone="error">{error}</Note>}

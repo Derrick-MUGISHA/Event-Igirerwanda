@@ -17,8 +17,10 @@ async function fetchEvents(): Promise<VenueEvent[]> {
 }
 
 /* One shared cache entry — Nav, Hero and the calendar all read from it,
-   so the page makes a single request for the whole events feed. A shared
-   SSE subscription refetches the moment an admin changes any event. */
+   so the page makes a single request for the whole events feed. The query
+   client is persisted (see Providers), so a refresh paints the last-known
+   events straight from cache; a shared SSE subscription then refetches the
+   moment an admin changes any event. */
 export function useEvents() {
   const queryClient = useQueryClient();
   useEffect(

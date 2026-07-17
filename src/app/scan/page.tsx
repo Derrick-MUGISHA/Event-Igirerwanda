@@ -1,75 +1,84 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, ApiError, getToken, setToken, clearToken } from "@/lib/client";
-import { PortalShell, Panel, Field, Button, Note } from "@/components/portal/ui";
+import { useState } from "react";
+import { ApiError } from "@/lib/client";
+import { useScannerAuth, useAuthHydrated } from "@/context/AuthContext";
+import { PortalShell, Panel, Field, Button, Note, Waiting } from "@/components/portal/ui";
+import PasswordField from "@/components/portal/PasswordField";
 import Scanner from "@/components/portal/Scanner";
 
 /* Entrance scanning for partner organizations: sign in with the access key
    given by the super admin, then scan tickets */
 export default function OrgScanPage() {
-  const [authed, setAuthed] = useState(false);
-  const [orgName, setOrgName] = useState("");
-  const [accessKey, setAccessKey] = useState("");
-  const [busy, setBusy] = useState(false);
+  const hydrated = useAuthHydrated();
+  const { isAuthenticated, user, login, logout } = useScannerAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const busy = login.isPending;
 
-  useEffect(() => {
-    if (getToken("org")) {
-      setAuthed(true);
-      setOrgName(localStorage.getItem("iems_org_name") ?? "");
-    }
-  }, []);
-
-  async function login(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    if (busy) return;
     setError("");
     try {
-      const d = await api<{ accessToken: string; organization: { name: string } }>(
-        "/api/org/login",
-        { body: { accessKey } }
-      );
-      setToken("org", d.accessToken);
-      localStorage.setItem("iems_org_name", d.organization.name);
-      setOrgName(d.organization.name);
-      setAuthed(true);
+      await login.mutateAsync({ email, password });
+      /* success unmounts this form (isAuthenticated flips), so there's no
+         second-submit window to guard beyond the pending state */
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
-    } finally {
-      setBusy(false);
     }
   }
 
+  /* the scanner session comes from localStorage, so wait for hydration to
+     avoid an SSR/client mismatch */
+  if (!hydrated) {
+    return (
+      <PortalShell eyebrow="Venue check-in" title="Partner sign in">
+        <Panel>
+          <Waiting message="Loading…" />
+        </Panel>
+      </PortalShell>
+    );
+  }
+
   return (
-    <PortalShell eyebrow="Venue check-in" title={authed ? `Scanning as ${orgName}` : "Partner sign in"}>
-      {authed ? (
+    <PortalShell
+      eyebrow="Venue check-in"
+      title={isAuthenticated ? `Scanning as ${user?.name ?? ""}` : "Scanner sign in"}
+    >
+      {isAuthenticated ? (
         <div className="space-y-4">
-          <Scanner token="org" />
-          <Button
-            variant="ghost"
-            onClick={() => {
-              clearToken("org");
-              localStorage.removeItem("iems_org_name");
-              setAuthed(false);
-            }}
-          >
+          <Scanner role="scanner" profile={{ name: user?.name, email: user?.email }} />
+          <Button variant="ghost" onClick={() => logout.mutate()}>
             Sign out
           </Button>
         </div>
       ) : (
         <Panel>
-          <form onSubmit={login} className="space-y-4">
+          <form onSubmit={submit} className="space-y-4">
             <p className="text-sm text-cream-dim">
-              Enter the access key provided by the event organizers.
+              Sign in with the scanner account provided by the event admin.
             </p>
             <Field
-              label="Access key"
+              label="Email"
+              type="email"
+              name="email"
+              autoComplete="username"
+              autoFocus
               required
-              value={accessKey}
-              onChange={(e) => setAccessKey(e.target.value)}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
-            <Button type="submit" disabled={busy} className="w-full">
+            <PasswordField
+              label="Password"
+              name="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <Button type="submit" busy={busy} className="w-full">
               {busy ? "Checking…" : "Start scanning"}
             </Button>
             {error && <Note tone="error">{error}</Note>}

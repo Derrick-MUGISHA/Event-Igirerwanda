@@ -6,15 +6,18 @@ import { Html5Qrcode } from "html5-qrcode";
 import { AnimatePresence, motion } from "motion/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Ban,
   Camera,
   CameraOff,
   CheckCircle2,
   Clock,
+  HelpCircle,
   Hourglass,
   ShieldX,
   XCircle,
 } from "lucide-react";
-import { api, type TokenKind } from "@/lib/client";
+import { api } from "@/lib/client";
+import type { Role } from "@/store/authSlice";
 import { subscribeLive } from "@/lib/liveStream";
 import type { ScanEvent } from "@/lib/scanBus";
 import { Panel, Note, Spinner } from "./ui";
@@ -68,6 +71,45 @@ const RESULT_STYLE: Record<
   },
 };
 
+/* the instant, glanceable verdict flashed big over the camera the moment a
+   scan resolves — gate staff read it at arm's length, then glance at the
+   detail card below. "ERROR" covers a scan/network hiccup (question mark). */
+type FlashKind = ScanEvent["result"] | "ERROR";
+const FLASH_META: Record<
+  FlashKind,
+  { icon: typeof CheckCircle2; label: string; ring: string }
+> = {
+  ACCEPTED: { icon: CheckCircle2, label: "Verified", ring: "bg-green/20 text-green ring-green/50" },
+  ALREADY_USED: { icon: Ban, label: "Already used", ring: "bg-terracotta/20 text-terracotta ring-terracotta/50" },
+  REVOKED: { icon: ShieldX, label: "Revoked", ring: "bg-terracotta/20 text-terracotta ring-terracotta/50" },
+  INVALID: { icon: XCircle, label: "Invalid", ring: "bg-terracotta/20 text-terracotta ring-terracotta/50" },
+  EXPIRED: { icon: Hourglass, label: "Expired", ring: "bg-tan/20 text-tan ring-tan/50" },
+  ERROR: { icon: HelpCircle, label: "Try again", ring: "bg-cream/10 text-cream ring-cream/30" },
+};
+
+/* focusMode isn't in the standard DOM constraint types yet */
+type AdvancedFocus = MediaTrackConstraintSet & { focusMode?: string };
+
+/* turn a getUserMedia failure into a message the gate staff can act on */
+function describeCameraError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : "";
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Camera access is blocked. Allow the camera for this site in your browser settings, then reload.";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "No camera was found on this device.";
+    case "NotReadableError":
+    case "AbortError":
+      return "The camera is being used by another app. Close it and try again.";
+    default:
+      return err instanceof Error && err.message
+        ? `Could not start the camera: ${err.message}`
+        : "Could not start the camera — it needs HTTPS (or localhost) and camera permission.";
+  }
+}
+
 const FEED_KEY = ["gate-feed"];
 const FEED_LIMIT = 30;
 
@@ -106,9 +148,16 @@ function verdictDetail(e: FeedItem): string {
 /* Gate scanner: the camera stays on between scans, a frame is captured as
    evidence for each verdict, results land instantly in the shared feed
    cache, and scans from other gates stream in live. */
-export default function Scanner({ token }: { token: TokenKind }) {
+export default function Scanner({
+  role,
+  profile,
+}: {
+  role: Role;
+  profile?: { name?: string | null; email?: string | null };
+}) {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
+  const [flash, setFlash] = useState<{ id: number; kind: FlashKind } | null>(null);
   const lastRef = useRef<{ payload: string; at: number }>({ payload: "", at: 0 });
   const snapshotRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
@@ -130,14 +179,27 @@ export default function Scanner({ token }: { token: TokenKind }) {
   };
 
   const scan = useMutation({
-    mutationFn: (qr: string) => api<ScanResponse>("/api/scan", { token, body: { qr } }),
+    mutationFn: (qr: string) => api<ScanResponse>("/api/scan", { role, body: { qr } }),
     onSuccess: (res) => {
       pushToFeed({ ...res, snapshot: snapshotRef.current ?? undefined });
       snapshotRef.current = null;
+      setFlash({ id: Date.now(), kind: res.result });
       navigator.vibrate?.(res.result === "ACCEPTED" ? 90 : [70, 60, 70]);
     },
-    onError: (err) => setError(err instanceof Error ? err.message : "Scan failed"),
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Scan failed");
+      setFlash({ id: Date.now(), kind: "ERROR" });
+      navigator.vibrate?.([70, 60, 70]);
+    },
   });
+
+  /* the big verdict overlay is a momentary flash — clear it so the live camera
+     is unobstructed for the next pass */
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 1800);
+    return () => clearTimeout(t);
+  }, [flash]);
   const scanRef = useRef(scan);
   useEffect(() => {
     scanRef.current = scan;
@@ -145,13 +207,14 @@ export default function Scanner({ token }: { token: TokenKind }) {
 
   /* live feed from every gate */
   useEffect(() => {
-    return subscribeLive(token, { onScan: pushToFeed });
+    return subscribeLive(role, { onScan: pushToFeed });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [role]);
 
   useEffect(() => {
     if (!scanning) return;
-    const scanner = new Html5Qrcode("qr-reader");
+    let active: Html5Qrcode | null = null;
+    let cancelled = false;
 
     /* freeze the moment of the scan: one JPEG frame off the live video */
     const captureFrame = (): string | null => {
@@ -180,41 +243,113 @@ export default function Scanner({ token }: { token: TokenKind }) {
       snapshotRef.current = captureFrame();
       scanRef.current.mutate(decoded);
     };
-    const config = { fps: 12, qrbox: { width: 260, height: 260 } };
+    const config = {
+      fps: 15,
+      /* a large search area (≈92% of the shorter edge) so the pass doesn't have
+         to fill the frame — the code is found wherever it lands in view */
+      qrbox: (vw: number, vh: number) => {
+        const size = Math.round(Math.min(vw, vh) * 0.92);
+        return { width: size, height: size };
+      },
+      aspectRatio: 1,
+      /* use the platform's native, hardware-accelerated detector when present
+         (Android/Chrome) — it locks far faster and with less holding-still */
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    };
+
+    /* Tune the live track for range + speed: continuous autofocus so a pass
+       snaps sharp at any distance, and the highest resolution the camera
+       supports (capped at 1080p) so a QR that's small/far still carries enough
+       pixels to decode — together this is what lets it read from a distance
+       like a native scanner. Applied AFTER the stream is live and best-effort,
+       so an unsupported hint can never stop the camera from opening. */
+    const tuneTrack = async () => {
+      const video = document.querySelector<HTMLVideoElement>("#qr-reader video");
+      const track = (video?.srcObject as MediaStream | null)?.getVideoTracks?.()[0];
+      if (!track?.getCapabilities) return;
+      const caps = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[] };
+      const constraints: MediaTrackConstraints & { advanced?: AdvancedFocus[] } = {};
+      if (caps.focusMode?.includes("continuous")) {
+        constraints.advanced = [{ focusMode: "continuous" }];
+      }
+      if (caps.width?.max) constraints.width = { ideal: Math.min(1920, caps.width.max) };
+      if (caps.height?.max) constraints.height = { ideal: Math.min(1080, caps.height.max) };
+      try {
+        await track.applyConstraints(constraints);
+      } catch {
+        /* device rejected the hints — its defaults still run */
+      }
+    };
+
+    /* Each attempt runs on a FRESH instance. Once html5-qrcode's start()
+       rejects, that instance is stuck "under transition" and reusing it makes
+       the next start() throw "Cannot transition to a new state" — which is what
+       surfaced as "Could not start the camera" when the first attempt failed. */
+    const attempt = async (src: string | MediaTrackConstraints): Promise<Html5Qrcode> => {
+      const s = new Html5Qrcode("qr-reader");
+      try {
+        await s.start(src, config, onDecode, () => {});
+        return s;
+      } catch (e) {
+        try {
+          await s.stop();
+        } catch {
+          /* it never started */
+        }
+        try {
+          s.clear();
+        } catch {
+          /* nothing to clear */
+        }
+        throw e;
+      }
+    };
 
     (async () => {
       try {
-        /* phones: back camera. laptops have no "environment" camera, so
-           fall back to whatever camera exists */
-        await scanner.start({ facingMode: "environment" }, config, onDecode, () => {});
-      } catch {
+        if (!window.isSecureContext && location.hostname !== "localhost") {
+          throw new DOMException("Insecure context", "SecurityError");
+        }
+        /* Start with the simplest constraint that works everywhere — phones
+           honour "environment" (back camera); laptops ignore the ideal and use
+           their only camera. Resolution and focus are tuned AFTER the stream is
+           live so an unsupported hint can never block the camera from opening. */
         try {
+          active = await attempt({ facingMode: { ideal: "environment" } });
+        } catch {
+          if (cancelled) return;
+          /* a browser that won't resolve facingMode — pick a camera explicitly */
           const cameras = await Html5Qrcode.getCameras();
-          if (!cameras.length) throw new Error("No camera found on this device");
+          if (!cameras.length) throw new DOMException("No camera", "NotFoundError");
           const back = cameras.find((c) => /back|rear|environment/i.test(c.label));
-          await scanner.start((back ?? cameras[0]).id, config, onDecode, () => {});
-        } catch (err) {
-          setError(
-            err instanceof Error
-              ? `${err.message} — the camera needs HTTPS (or localhost) and permission.`
-              : "Could not start the camera"
-          );
+          active = await attempt((back ?? cameras[0]).id);
+        }
+        /* the effect was torn down while the camera was opening */
+        if (cancelled) {
+          await active.stop().catch(() => {});
+          return;
+        }
+        await tuneTrack();
+      } catch (err) {
+        if (!cancelled) {
+          setError(describeCameraError(err));
           setScanning(false);
         }
       }
     })();
 
     return () => {
+      cancelled = true;
       /* let the library tear its own video element down — yanking the
          container out of the DOM mid-stream triggers onabort errors */
-      if (scanner.isScanning) {
-        scanner
-          .stop()
-          .then(() => scanner.clear())
+      const s = active;
+      if (s?.isScanning) {
+        s.stop()
+          .then(() => s.clear())
           .catch(() => {});
-      } else {
+      } else if (s) {
         try {
-          scanner.clear();
+          s.clear();
         } catch {
           /* nothing to clear */
         }
@@ -222,11 +357,43 @@ export default function Scanner({ token }: { token: TokenKind }) {
     };
   }, [scanning]);
 
+  const scannerInitials = (profile?.name ?? "S")
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
   return (
-    <div className="max-w-md space-y-4">
+    <div className="mx-auto max-w-md space-y-4">
+      {/* who's on the gate — the signed-in scanner's profile */}
+      {profile && (
+        <Panel className="flex items-center gap-3">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-orange/15 text-sm font-bold text-orange">
+            {scannerInitials}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-cream">
+              {profile.name ?? "Gate scanner"}
+            </p>
+            {profile.email && (
+              <p className="truncate text-xs text-cream-dim">{profile.email}</p>
+            )}
+          </div>
+          <span className="ml-auto flex items-center gap-1.5 rounded-full bg-green/15 px-2.5 py-1 text-[11px] font-semibold text-green">
+            <span className="size-1.5 rounded-full bg-green" />
+            On duty
+          </span>
+        </Panel>
+      )}
+
       {/* the camera container stays mounted; CSS hides it when idle */}
       <Panel className={scanning ? "" : "hidden"}>
-        <div id="qr-reader" className="overflow-hidden rounded-lg" />
+        <div className="relative mx-auto w-full max-w-sm">
+          <div id="qr-reader" className="mx-auto overflow-hidden rounded-lg" />
+          <ScanFlash flash={flash} />
+        </div>
         <p className="mt-3 flex items-center justify-center gap-2 text-xs text-cream-dim">
           {scan.isPending ? (
             <>
@@ -304,6 +471,44 @@ export default function Scanner({ token }: { token: TokenKind }) {
 
       {error && <Note tone="error">{error}</Note>}
     </div>
+  );
+}
+
+/* the big verdict that flashes over the live camera the instant a scan
+   resolves — a tick for a clean entry, an X for invalid/revoked, a "used"
+   stamp for a re-scan, and a question mark when the scan itself hiccups */
+function ScanFlash({ flash }: { flash: { id: number; kind: FlashKind } | null }) {
+  return (
+    <AnimatePresence>
+      {flash && (
+        <motion.div
+          key={flash.id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/50 backdrop-blur-[2px]"
+        >
+          {(() => {
+            const meta = FLASH_META[flash.kind];
+            const Icon = meta.icon;
+            return (
+              <>
+                <motion.span
+                  initial={{ scale: 0.4 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 480, damping: 20 }}
+                  className={cn("flex size-24 items-center justify-center rounded-full ring-4", meta.ring)}
+                >
+                  <Icon className="size-14" strokeWidth={2.5} />
+                </motion.span>
+                <span className="display text-2xl text-cream drop-shadow">{meta.label}</span>
+              </>
+            );
+          })()}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

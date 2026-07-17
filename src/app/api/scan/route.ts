@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Attendee, Event, ScanLog, Ticket, VerificationToken, eventDeadline } from "@/models";
+import {
+  Event,
+  Guest,
+  Participant,
+  ScanLog,
+  Ticket,
+  VerificationToken,
+  eventDeadline,
+  type TicketDoc,
+} from "@/models";
 import { requireScanner, verifyQrToken } from "@/lib/auth";
 import { publishScan, type ScanEvent } from "@/lib/scanBus";
 import { notifyAdmins } from "@/lib/notify";
@@ -11,6 +20,50 @@ const Body = z.object({ qr: z.string().min(10) });
 const timeOf = (d: Date | string) =>
   new Date(d).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
+/* load the holder record (Participant or Guest) that owns a ticket */
+async function loadHolder(ticket: TicketDoc) {
+  if (ticket.holderType === "Participant") {
+    const p = await Participant.findById(ticket.holderId);
+    return p
+      ? {
+          who: { fullName: p.name, type: "PARTICIPANT", photoUrl: p.profilePicture ?? null },
+          snapshot: {
+            name: p.name,
+            email: p.email,
+            phone: p.phone ?? null,
+            label: p.stack ?? null,
+            photoUrl: p.profilePicture ?? null,
+          },
+          remove: async () => {
+            await Promise.all([
+              Participant.deleteOne({ _id: p._id }),
+              Guest.deleteMany({ inviter: p._id }),
+              VerificationToken.deleteMany({ participant: p._id }),
+            ]);
+          },
+          badge: p.stack ?? null,
+        }
+      : null;
+  }
+  const g = await Guest.findById(ticket.holderId);
+  return g
+    ? {
+        who: { fullName: g.name, type: g.guestType, photoUrl: g.profile ?? null },
+        snapshot: {
+          name: g.name,
+          email: g.email,
+          phone: null,
+          label: g.guestType,
+          photoUrl: g.profile ?? null,
+        },
+        remove: async () => {
+          await Guest.deleteOne({ _id: g._id });
+        },
+        badge: g.guestType,
+      }
+    : null;
+}
+
 export async function POST(req: Request) {
   const scanner = await requireScanner(req);
   if (!scanner) return unauthorized();
@@ -19,7 +72,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return fail("QR payload is required");
 
   await dbConnect();
-  const scannedBy = { scannedByAdmin: scanner.adminId ?? null, scannedByOrg: scanner.orgId ?? null };
+  const scannedBy = { scannedByAdmin: scanner.adminId ?? null, scannedByScanner: scanner.scannerId ?? null };
 
   const broadcast = (event: ScanEvent) => {
     publishScan(event);
@@ -43,15 +96,14 @@ export async function POST(req: Request) {
   }
 
   const known = await Ticket.findOne({ code: qr.code });
-  const [attendee, event] = known
-    ? await Promise.all([Attendee.findById(known.attendee), Event.findById(known.event)])
-    : [null, null];
-  const who = attendee
-    ? { fullName: attendee.fullName, type: attendee.type, photoUrl: attendee.photoUrl ?? null }
+  const holder = known ? await loadHolder(known) : null;
+  const event = known ? await Event.findById(known.event) : null;
+  const who = holder
+    ? holder.who
     : known?.holder
       ? {
-          fullName: known.holder.fullName,
-          type: known.holder.type,
+          fullName: known.holder.name,
+          type: known.holder.label ?? "GUEST",
           photoUrl: known.holder.photoUrl ?? null,
         }
       : qr.name
@@ -124,22 +176,11 @@ export async function POST(req: Request) {
   await ScanLog.create({ ...scannedBy, ticket: ticket._id, result: "ACCEPTED" });
 
   /* the pass is consumed — archive the holder on the ticket, then delete the
-     attendee so the same person is free to register for any other event */
-  if (attendee) {
-    ticket.holder = {
-      fullName: attendee.fullName,
-      email: attendee.email,
-      phone: attendee.phone ?? null,
-      type: attendee.type,
-      cohort: attendee.cohort ?? null,
-      photoUrl: attendee.photoUrl ?? null,
-      addedBy: attendee.addedBy ?? null,
-    };
+     holder record so the same person is free to register for any other event */
+  if (holder) {
+    ticket.holder = holder.snapshot;
     await ticket.save();
-    await Promise.all([
-      Attendee.deleteOne({ _id: attendee._id }),
-      VerificationToken.deleteMany({ attendee: attendee._id }),
-    ]);
+    await holder.remove();
   }
 
   void notifyAdmins({
@@ -151,6 +192,6 @@ export async function POST(req: Request) {
   });
   return ok({
     ...broadcast({ at, result: "ACCEPTED", attendee: who, eventName, usedAt: at, expiresAt }),
-    cohort: attendee?.cohort ?? null,
+    stack: holder?.badge ?? null,
   });
 }

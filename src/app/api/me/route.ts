@@ -1,105 +1,100 @@
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Attendee, Event, Ticket, GENDERS } from "@/models";
+import { Event, Guest, Participant, Ticket, GENDERS, STACKS } from "@/models";
 import { requireAttendee } from "@/lib/auth";
 import { ticketQrDataUrl } from "@/lib/qr";
-import { attendeeRoleLine } from "@/lib/tickets";
+import { roleLine } from "@/lib/tickets";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
 
 export async function GET(req: Request) {
-  const attendeeId = await requireAttendee(req);
-  if (!attendeeId) return unauthorized();
+  const participantId = await requireAttendee(req);
+  if (!participantId) return unauthorized();
 
   await dbConnect();
-  const attendee = await Attendee.findById(attendeeId);
-  if (!attendee) return notFound("Registration");
+  const participant = await Participant.findById(participantId);
+  if (!participant) return notFound("Registration");
 
   const [event, ticket, plusOne] = await Promise.all([
-    Event.findById(attendee.event),
-    Ticket.findOne({ attendee: attendee._id }),
-    attendee.type === "PARTICIPANT"
-      ? Attendee.findOne({ linkedParticipant: attendee._id })
-      : Promise.resolve(null),
+    Event.findById(participant.event),
+    Ticket.findOne({ holderType: "Participant", holderId: participant._id }),
+    Guest.findOne({ inviter: participant._id }),
   ]);
 
   return ok({
     attendee: {
-      id: attendee._id,
-      type: attendee.type,
-      fullName: attendee.fullName,
-      email: attendee.email,
-      phone: attendee.phone,
-      gender: attendee.gender ?? null,
-      position: attendee.position ?? "",
-      relationship: attendee.relationship ?? null,
-      roleLine: await attendeeRoleLine(attendee),
-      cohort: attendee.cohort,
-      photoUrl: attendee.photoUrl ?? null,
-      status: attendee.status,
+      type: "PARTICIPANT",
+      fullName: participant.name,
+      email: participant.email,
+      phone: participant.phone ?? null,
+      gender: participant.gender ?? null,
+      roleLine: await roleLine({ kind: "Participant", doc: participant }),
+      cohort: participant.stack ?? null,
+      photoUrl: participant.profilePicture ?? null,
+      status: participant.status,
     },
     event: event && {
       id: event._id,
       name: event.name,
-      date: event.date,
-      venue: event.venue,
+      date: event.startTime,
+      venue: event.location,
+      about: event.details ?? "",
       rules: event.rules,
     },
     ticket: ticket && {
       code: ticket.code,
       status: ticket.status,
       qrDataUrl: await ticketQrDataUrl(ticket.code, {
-        name: attendee.fullName,
-        type: attendee.type,
+        name: participant.name,
+        type: "PARTICIPANT",
         eventName: event?.name,
       }),
     },
     plusOne: plusOne && {
-      id: plusOne._id,
-      fullName: plusOne.fullName,
+      fullName: plusOne.name,
       email: plusOne.email,
-      gender: plusOne.gender ?? null,
-      relationship: plusOne.relationship ?? null,
-      status: plusOne.status,
+      gender: null,
+      relationship: plusOne.guestType === "PLUS_ONE" ? "OTHER" : null,
+      status: plusOne.ticket ? "ISSUED" : "PENDING",
     },
   });
 }
 
 const ProfileBody = z
   .object({
-    fullName: z.string().min(2),
+    name: z.string().min(2),
     phone: z.string().min(6),
     gender: z.enum(GENDERS),
-    position: z.string().min(2),
+    stack: z.enum(STACKS),
   })
   .partial();
 
-/* the attendee fills in whatever personal details are still missing
+/* the participant fills in whatever personal details are still missing
    after verifying their email — the ticket is only issued once done */
 export async function PATCH(req: Request) {
-  const attendeeId = await requireAttendee(req);
-  if (!attendeeId) return unauthorized();
+  const participantId = await requireAttendee(req);
+  if (!participantId) return unauthorized();
 
   const parsed = ProfileBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("Invalid profile details");
 
   await dbConnect();
-  const attendee = await Attendee.findById(attendeeId);
-  if (!attendee) return notFound("Registration");
-  if (!attendee.emailVerifiedAt) return fail("Verify your email first", 403);
+  const participant = await Participant.findById(participantId);
+  if (!participant) return notFound("Registration");
+  if (participant.status === "PENDING") return fail("Verify your email first", 403);
 
-  const { fullName, phone, gender, position } = parsed.data;
-  if (fullName) attendee.fullName = fullName;
-  if (phone) attendee.phone = phone;
-  if (gender) attendee.gender = gender;
-  if (position) attendee.position = position;
-  await attendee.save();
+  const { name, phone, gender, stack } = parsed.data;
+  if (name) participant.name = name;
+  if (phone) participant.phone = phone;
+  if (gender) participant.gender = gender;
+  if (stack) participant.stack = stack;
+  await participant.save();
 
   return ok({
     attendee: {
-      fullName: attendee.fullName,
-      phone: attendee.phone,
-      gender: attendee.gender,
-      position: attendee.position,
+      name: participant.name,
+      phone: participant.phone,
+      gender: participant.gender,
+      stack: participant.stack,
     },
   });
 }

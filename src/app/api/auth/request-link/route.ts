@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from "crypto";
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Attendee, Event, VerificationToken } from "@/models";
+import { Event, Participant, VerificationToken } from "@/models";
 import { sendMagicLinkEmail } from "@/lib/mailer";
+import { appUrl } from "@/lib/appUrl";
 import { ok, fail } from "@/lib/http";
 
 const Body = z.object({
@@ -19,13 +20,22 @@ export async function POST(req: Request) {
 
   await dbConnect();
 
-  /* guests are checked in by admins and don't log in themselves */
-  const attendees = await Attendee.find({ email, type: { $in: ["PARTICIPANT", "PLUS_ONE"] } });
-  let match: { attendeeId: string; eventName: string; name: string } | null = null;
-  for (const a of attendees) {
-    const event = await Event.findOne({ _id: a.event, status: "OPEN" });
+  /* guests are checked in by admins/participants and don't log in themselves */
+  const participants = await Participant.find({ email });
+  let match: { participantId: string; eventName: string; name: string } | null = null;
+  let sawFullEvent = false;
+  for (const p of participants) {
+    const event = await Event.findOne({ _id: p.event, status: "OPEN" });
     if (!event) continue;
-    const candidate = { attendeeId: a._id.toString(), eventName: event.name, name: a.fullName };
+    /* capacity gate: don't start a login the event can't honour. A participant
+       who already holds a ticket still counts toward the reserved slots, so
+       only block when the event is full AND they have no ticket yet. */
+    const full = event.maxAttendees > 0 && event.registeredCount >= event.maxAttendees;
+    if (full && !p.ticket) {
+      sawFullEvent = true;
+      continue;
+    }
+    const candidate = { participantId: p._id.toString(), eventName: event.name, name: p.name };
     if (event.slug === parsed.data.eventSlug) {
       match = candidate;
       break;
@@ -33,18 +43,24 @@ export async function POST(req: Request) {
     match ??= candidate;
   }
 
+  /* only surface "full" when it's the sole reason we can't proceed — otherwise
+     keep the neutral response so the endpoint can't probe the roster */
+  if (!match && sawFullEvent) {
+    return fail("This event has reached its maximum capacity.", 409);
+  }
+
   /* same response whether or not the email is registered, so the endpoint
-     can't be used to probe the attendee list */
+     can't be used to probe the participant list */
   if (match) {
     const token = randomBytes(32).toString("hex");
     await VerificationToken.create({
       tokenHash: createHash("sha256").update(token).digest("hex"),
       purpose: "LOGIN",
       email,
-      attendee: match.attendeeId,
+      participant: match.participantId,
       expiresAt: new Date(Date.now() + 30 * 60 * 1000),
     });
-    const url = `${process.env.NEXT_PUBLIC_APP_URL}/verify/${token}`;
+    const url = appUrl(`/verify/${token}`);
     await sendMagicLinkEmail(email, match.name, url, match.eventName);
   }
 

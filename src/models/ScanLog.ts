@@ -7,7 +7,7 @@ export interface ScanLogDoc {
   _id: Types.ObjectId;
   ticket?: Types.ObjectId | null;
   scannedByAdmin?: Types.ObjectId | null;
-  scannedByOrg?: Types.ObjectId | null;
+  scannedByScanner?: Types.ObjectId | null;
   result: ScanResult;
   at: Date;
   createdAt: Date;
@@ -18,7 +18,7 @@ const ScanLogSchema = new Schema<ScanLogDoc>(
   {
     ticket: { type: Schema.Types.ObjectId, ref: "Ticket", default: null },
     scannedByAdmin: { type: Schema.Types.ObjectId, ref: "Admin", default: null },
-    scannedByOrg: { type: Schema.Types.ObjectId, ref: "Organization", default: null },
+    scannedByScanner: { type: Schema.Types.ObjectId, ref: "Scanner", default: null },
     result: { type: String, enum: SCAN_RESULTS, required: true },
     at: { type: Date, default: () => new Date() },
   },

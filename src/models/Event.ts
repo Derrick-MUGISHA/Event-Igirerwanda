@@ -1,8 +1,5 @@
 import { Schema, model, models, type Model, type Types } from "mongoose";
 
-export const EVENT_STATUSES = ["DRAFT", "OPEN", "CLOSED"] as const;
-export type EventStatus = (typeof EVENT_STATUSES)[number];
-
 /* IRO's real program areas — drives the public calendar colour coding */
 export const EVENT_CATEGORIES = [
   "SheCanCODE",
@@ -14,27 +11,63 @@ export const EVENT_CATEGORIES = [
 ] as const;
 export type EventCategory = (typeof EVENT_CATEGORIES)[number];
 
+/* the format the session takes — drives filtering + the badge on the card */
+export const EVENT_TYPES = [
+  "WORKSHOP",
+  "BOOTCAMP",
+  "MEETUP",
+  "CONFERENCE",
+  "WEBINAR",
+  "HACKATHON",
+  "SEMINAR",
+  "OTHER",
+] as const;
+export type EventType = (typeof EVENT_TYPES)[number];
+
+/* DRAFT: being prepared, not visible
+   OPEN: taking registrations right now
+   CLOSED: registrations closed / event finished */
+export const EVENT_STATUSES = ["DRAFT", "OPEN", "CLOSED"] as const;
+export type EventStatus = (typeof EVENT_STATUSES)[number];
+
 export interface EventDoc {
+  /** 2. id of the event */
   _id: Types.ObjectId;
+  /** 1. name of the event */
   name: string;
+  /** 3. slug of the event */
   slug: string;
-  date: Date;
-  /** when it wraps up — optional; the public site hides the end time if unset */
-  endDate?: Date | null;
-  venue: string;
+  /** 4. category */
   category: EventCategory;
-  price: string;
-  description: string;
-  /** promo poster shown on the event card (Cloudinary URL) */
-  posterUrl?: string;
-  /** private events don't appear on the public calendar — participants
-      are pre-registered and reach them through the ticket portal */
-  isPublic: boolean;
+  /** 5. type of the event */
+  type: EventType;
+  /** 6. start time of the event */
+  startTime: Date;
+  /** 7. end time of the event — optional; the public site hides it if unset */
+  endTime?: Date | null;
+  /** 8. event gallery (Cloudinary image URLs) */
+  gallery: string[];
+  /** 9. event organiser */
+  organiser: string;
+  /** 10. max number of attendees — minimum of zero (0 = unlimited/uncapped) */
+  maxAttendees: number;
+  /** atomic capacity counter — reserved slots (non-revoked tickets). Source of
+      truth for concurrency-safe capacity checks; reconciled with tickets. */
+  registeredCount: number;
+  /** 11. details on the event */
+  details: string;
+  /** 12. rules and regulations of the event */
   rules: string[];
-  maxParticipants: number;
-  maxMiniAdmins: number;
+  /** 13. status */
   status: EventStatus;
-  createdBy?: Types.ObjectId | null;
+  /** 14. price */
+  price: string;
+  /** 15. location */
+  location: string;
+  /** 16. is published — gate that exposes the event on the public calendar */
+  isPublished: boolean;
+  /** archived events are hidden from the public site + active lists */
+  archivedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,19 +76,21 @@ const EventSchema = new Schema<EventDoc>(
   {
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    date: { type: Date, required: true },
-    endDate: { type: Date, default: null },
-    venue: { type: String, default: "" },
     category: { type: String, enum: EVENT_CATEGORIES, default: "Mentorship" },
-    price: { type: String, default: "Free" },
-    description: { type: String, default: "" },
-    posterUrl: { type: String, default: "" },
-    isPublic: { type: Boolean, default: true },
+    type: { type: String, enum: EVENT_TYPES, default: "WORKSHOP" },
+    startTime: { type: Date, required: true },
+    endTime: { type: Date, default: null },
+    gallery: { type: [String], default: [] },
+    organiser: { type: String, trim: true, default: "Igire Rwanda Organization" },
+    maxAttendees: { type: Number, default: 0, min: 0 },
+    registeredCount: { type: Number, default: 0, min: 0 },
+    details: { type: String, default: "" },
     rules: { type: [String], default: [] },
-    maxParticipants: { type: Number, default: 200 },
-    maxMiniAdmins: { type: Number, default: 10 },
-    status: { type: String, enum: EVENT_STATUSES, default: "OPEN" },
-    createdBy: { type: Schema.Types.ObjectId, ref: "Admin", default: null },
+    status: { type: String, enum: EVENT_STATUSES, default: "DRAFT" },
+    price: { type: String, default: "Free" },
+    location: { type: String, default: "" },
+    isPublished: { type: Boolean, default: false },
+    archivedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -65,9 +100,9 @@ export const Event: Model<EventDoc> =
 
 /* Every ticket expires when its event wraps up: the explicit end time when
    one is set, otherwise the end of the event day. */
-export function eventDeadline(event: Pick<EventDoc, "date" | "endDate">): Date {
-  if (event.endDate) return new Date(event.endDate);
-  const end = new Date(event.date);
+export function eventDeadline(event: Pick<EventDoc, "startTime" | "endTime">): Date {
+  if (event.endTime) return new Date(event.endTime);
+  const end = new Date(event.startTime);
   end.setHours(23, 59, 59, 999);
   return end;
 }
