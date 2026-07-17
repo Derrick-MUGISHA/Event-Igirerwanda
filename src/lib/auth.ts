@@ -1,5 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import type { AdminRole } from "@/models/Admin";
+import { Admin, Scanner } from "@/models";
+import { dbConnect } from "./db";
 
 const encoder = new TextEncoder();
 
@@ -94,10 +96,27 @@ export async function requireAttendee(req: Request): Promise<string | null> {
   return auth?.kind === "attendee" ? auth.sub : null;
 }
 
+/* The bearer token is stateless, so revocation happens here: every privileged
+   request re-checks that the account still exists and is active. Deactivating
+   or deleting an admin/scanner therefore ends their session on the next request
+   instead of waiting for the token to expire. One indexed _id lookup per call. */
+async function activeAdmin(id: string): Promise<{ id: string; role: AdminRole } | null> {
+  await dbConnect();
+  const admin = await Admin.findById(id).select("role active");
+  if (!admin || !admin.active) return null;
+  return { id, role: admin.role };
+}
+
+async function isActiveScanner(id: string): Promise<boolean> {
+  await dbConnect();
+  const scanner = await Scanner.findById(id).select("active");
+  return !!scanner && scanner.active;
+}
+
 export async function requireAdmin(req: Request): Promise<{ id: string; role: AdminRole } | null> {
   const auth = await getAuth(req);
   if (auth?.kind !== "admin") return null;
-  return { id: auth.sub, role: auth.role };
+  return activeAdmin(auth.sub);
 }
 
 /* gate scanning is open to admins and scanner accounts */
@@ -105,13 +124,14 @@ export async function requireScanner(
   req: Request
 ): Promise<{ adminId?: string; scannerId?: string } | null> {
   const auth = await getAuth(req);
-  if (auth?.kind === "admin") return { adminId: auth.sub };
-  if (auth?.kind === "scanner") return { scannerId: auth.sub };
+  if (auth?.kind === "admin") return (await activeAdmin(auth.sub)) ? { adminId: auth.sub } : null;
+  if (auth?.kind === "scanner") return (await isActiveScanner(auth.sub)) ? { scannerId: auth.sub } : null;
   return null;
 }
 
 /* endpoints exclusive to a signed-in scanner account */
 export async function requireScannerAccount(req: Request): Promise<string | null> {
   const auth = await getAuth(req);
-  return auth?.kind === "scanner" ? auth.sub : null;
+  if (auth?.kind !== "scanner") return null;
+  return (await isActiveScanner(auth.sub)) ? auth.sub : null;
 }

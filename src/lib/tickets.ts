@@ -13,6 +13,7 @@ import {
   type TicketHolderType,
 } from "@/models";
 import { ticketQrPngBuffer, ticketQrDataUrl } from "./qr";
+import { fetchImageBuffer } from "./imageFetch";
 import { appUrl } from "./appUrl";
 import { sendTicketEmail } from "./mailer";
 import { ticketPdfBuffer } from "./ticketPdf";
@@ -236,32 +237,14 @@ export async function emailTicket(holder: Holder, event: EventDoc, code: string)
   const url = appUrl(`/ticket/${code}`);
   const role = await roleLine(holder);
 
-  /* pull the profile photo so it can be embedded in the PDF ticket */
-  let photo: Buffer | null = null;
-  if (view.photoUrl) {
-    try {
-      const res = await fetch(view.photoUrl);
-      if (res.ok) photo = Buffer.from(await res.arrayBuffer());
-    } catch {
-      /* the pass is still valid without the photo */
-    }
-  }
-
-  /* the event poster becomes the pass background (PDF) and email banner */
+  /* pull the profile photo and event poster concurrently — the poster becomes
+     the pass background (PDF) and email banner. Either can fail without
+     invalidating the pass. */
   const posterUrl = event.gallery?.[0] ?? null;
-  let eventImage: Buffer | null = null;
-  if (posterUrl) {
-    try {
-      if (posterUrl.startsWith("data:")) {
-        eventImage = Buffer.from(posterUrl.split(",")[1] ?? "", "base64");
-      } else {
-        const res = await fetch(posterUrl);
-        if (res.ok) eventImage = Buffer.from(await res.arrayBuffer());
-      }
-    } catch {
-      /* the pass renders fine without the poster */
-    }
-  }
+  const [photo, eventImage] = await Promise.all([
+    fetchImageBuffer(view.photoUrl),
+    fetchImageBuffer(posterUrl),
+  ]);
 
   const pdf = await ticketPdfBuffer({
     name: view.name,
@@ -347,6 +330,64 @@ export async function buildTicketView(ticket: TicketDoc, opts: { qr?: boolean } 
         }
       : {}),
   };
+}
+
+/* Batch equivalent of buildTicketView for list endpoints. A naive
+   `tickets.map(buildTicketView)` runs 2 queries per ticket (event + holder) —
+   ~1000 round-trips for a 500-row list. This resolves every event and holder in
+   three `$in` queries total, then assembles the views from in-memory maps.
+   Intended for lists, so it never embeds a QR image (that's a per-item cost). */
+export async function buildTicketViews(tickets: TicketDoc[]) {
+  const eventIds = new Set<string>();
+  const participantIds = new Set<string>();
+  const guestIds = new Set<string>();
+  for (const t of tickets) {
+    if (t.event) eventIds.add(t.event.toString());
+    if (!t.holderId) continue;
+    if (t.holderType === "Participant") participantIds.add(t.holderId.toString());
+    else if (t.holderType === "Guest") guestIds.add(t.holderId.toString());
+  }
+
+  const [events, participants, guests] = await Promise.all([
+    Event.find({ _id: { $in: [...eventIds] } }).select("name"),
+    Participant.find({ _id: { $in: [...participantIds] } }).select("name email profilePicture"),
+    Guest.find({ _id: { $in: [...guestIds] } }).select("name email guestType profile"),
+  ]);
+  const eventName = new Map(events.map((e) => [e._id.toString(), e.name]));
+  const participantById = new Map(participants.map((p) => [p._id.toString(), p]));
+  const guestById = new Map(guests.map((g) => [g._id.toString(), g]));
+
+  const identityOf = (t: TicketDoc) => {
+    if (t.holderType === "Participant" && t.holderId) {
+      const p = participantById.get(t.holderId.toString());
+      if (p) return { name: p.name, type: "PARTICIPANT" };
+    } else if (t.holderType === "Guest" && t.holderId) {
+      const g = guestById.get(t.holderId.toString());
+      if (g) return { name: g.name, type: g.guestType };
+    }
+    /* archived snapshot / legacy fallback — matches ticketIdentity() */
+    return {
+      name: t.holder?.name ?? "Attendee",
+      type: t.holder?.label ?? t.holderType?.toUpperCase() ?? "GUEST",
+    };
+  };
+
+  return tickets.map((t) => {
+    const who = identityOf(t);
+    return {
+      id: t._id,
+      ticketNumber: t.ticketNumber,
+      participantId: t.holderId,
+      participantName: who.name,
+      ownerType: t.holderType,
+      eventId: t.event,
+      eventName: (t.event && eventName.get(t.event.toString())) ?? null,
+      registeredAt: t.issuedAt,
+      status: t.status,
+      scannedAt: t.scannedAt ?? null,
+      cancelledAt: t.cancelledAt ?? null,
+    };
+  });
 }
 
 /* Whether a participant may view/act on a ticket: their own participant

@@ -1,7 +1,7 @@
 import { dbConnect } from "@/lib/db";
 import { Participant, Ticket } from "@/models";
 import { requireAttendee } from "@/lib/auth";
-import { buildTicketView } from "@/lib/tickets";
+import { buildTicketViews } from "@/lib/tickets";
 import { ok, unauthorized, notFound } from "@/lib/http";
 
 /* The participant's ticket history: live participant tickets across all their
@@ -25,6 +25,5 @@ export async function GET(req: Request) {
     ],
   }).sort({ issuedAt: -1 });
 
-  const views = await Promise.all(tickets.map((t) => buildTicketView(t)));
-  return ok({ tickets: views });
+  return ok({ tickets: await buildTicketViews(tickets) });
 }

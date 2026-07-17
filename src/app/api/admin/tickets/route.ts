@@ -2,7 +2,7 @@ import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Guest, Participant, Ticket, TICKET_STATUSES, type TicketStatus } from "@/models";
 import { requireAdmin } from "@/lib/auth";
-import { buildTicketView, issueTicket, CapacityError, type Holder } from "@/lib/tickets";
+import { buildTicketView, buildTicketViews, issueTicket, CapacityError, type Holder } from "@/lib/tickets";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
 import type { QueryFilter } from "mongoose";
 import type { TicketDoc } from "@/models";
@@ -23,8 +23,7 @@ export async function GET(req: Request) {
 
   await dbConnect();
   const tickets = await Ticket.find(filter).sort({ issuedAt: -1 }).limit(500);
-  const views = await Promise.all(tickets.map((t) => buildTicketView(t)));
-  return ok({ tickets: views });
+  return ok({ tickets: await buildTicketViews(tickets) });
 }
 
 const CreateBody = z

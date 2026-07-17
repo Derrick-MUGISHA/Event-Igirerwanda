@@ -200,15 +200,26 @@ function normalizePhone(raw: string): string {
   return digits ? `+250${digits}` : "";
 }
 
+/* reject unset or placeholder secrets so a deploy can't silently boot with the
+   values shipped in .env.example */
+function requireSecret(name: string, { minLength = 1 }: { minLength?: number } = {}): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set`);
+  if (value === "change-me") throw new Error(`${name} is still the placeholder "change-me" — set a real value`);
+  if (value.length < minLength) throw new Error(`${name} must be at least ${minLength} characters`);
+  return value;
+}
+
 async function main() {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI is not set");
+  /* the app signs every token with this — fail loudly if it's weak/missing */
+  requireSecret("JWT_SECRET", { minLength: 32 });
   await mongoose.connect(uri);
 
   /* super admin from env */
   const adminEmail = (process.env.SUPER_ADMIN_EMAIL ?? "admin@igirerwanda.org").toLowerCase();
-  const adminPassword = process.env.SUPER_ADMIN_PASSWORD;
-  if (!adminPassword) throw new Error("SUPER_ADMIN_PASSWORD is not set");
+  const adminPassword = requireSecret("SUPER_ADMIN_PASSWORD", { minLength: 8 });
   const superAdmin = await Admin.findOneAndUpdate(
     { email: adminEmail },
     {
@@ -227,9 +238,11 @@ async function main() {
   }
   console.log(`super admin: ${superAdmin.email}`);
 
-  /* a scanner account for the gate device (email + password login) */
+  /* a scanner account for the gate device (email + password login). It gets its
+     OWN password — never the admin's — so a gate device can't be used to log in
+     as an administrator. */
   const scannerEmail = (process.env.SCANNER_EMAIL ?? "scanner@igirerwanda.org").toLowerCase();
-  const scannerPassword = process.env.SCANNER_PASSWORD ?? adminPassword;
+  const scannerPassword = requireSecret("SCANNER_PASSWORD", { minLength: 8 });
   const scanner = await Scanner.findOneAndUpdate(
     { email: scannerEmail },
     {

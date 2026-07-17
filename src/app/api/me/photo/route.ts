@@ -1,7 +1,7 @@
 import { dbConnect } from "@/lib/db";
 import { Participant } from "@/models";
 import { requireAttendee } from "@/lib/auth";
-import { uploadImage } from "@/lib/cloudinary";
+import { uploadImage, InvalidImageError } from "@/lib/cloudinary";
 import { issueTicket, CapacityError } from "@/lib/tickets";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
 
@@ -23,7 +23,12 @@ export async function POST(req: Request) {
   if (participant.status === "PENDING") return fail("Verify your email first", 403);
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  participant.profilePicture = await uploadImage(buffer, "participants");
+  try {
+    participant.profilePicture = await uploadImage(buffer, "participants");
+  } catch (err) {
+    if (err instanceof InvalidImageError) return fail(err.message);
+    throw err;
+  }
   participant.status = "COMPLETE";
   await participant.save();
 

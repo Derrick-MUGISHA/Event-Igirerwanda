@@ -1,16 +1,23 @@
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Event, Guest, Participant } from "@/models";
+import { Event, Guest, Participant, GENDERS, RELATIONSHIPS } from "@/models";
 import { requireAttendee } from "@/lib/auth";
 import { issueTicket, CapacityError } from "@/lib/tickets";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
 
 /* the participant fills their plus-one's details directly; the guest is
-   created as a PLUS_ONE and their ticket is issued and emailed straight away */
-const Body = z.object({
-  name: z.string().min(2).optional(),
-  email: z.string().email(),
-});
+   created as a PLUS_ONE and their ticket is issued and emailed straight away.
+   Accept both `name` and `fullName` so the field survives whichever key the
+   client sends, and persist gender + relationship rather than dropping them. */
+const Body = z
+  .object({
+    name: z.string().min(2).optional(),
+    fullName: z.string().min(2).optional(),
+    email: z.string().email(),
+    gender: z.enum(GENDERS).optional(),
+    relationship: z.enum(RELATIONSHIPS).optional(),
+  })
+  .transform((d) => ({ ...d, name: d.name ?? d.fullName }));
 
 export async function POST(req: Request) {
   const participantId = await requireAttendee(req);
@@ -40,6 +47,8 @@ export async function POST(req: Request) {
       email,
       guestType: "PLUS_ONE",
       inviter: participant._id,
+      gender: parsed.data.gender ?? null,
+      relationship: parsed.data.relationship ?? null,
     });
   } catch (err: unknown) {
     /* unique indexes: (event,email) or one-plus-one-per-participant */

@@ -106,7 +106,7 @@ export default function Nav() {
       <div className="absolute inset-0 -z-10 bg-bg/90 backdrop-blur-md" />
       {/* four divisions — menu, logo, next event, CTA — share the row
           evenly, with equal space left over between each */}
-      <nav className="mx-auto flex h-20 max-w-6xl items-center justify-between gap-4 px-5">
+      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:h-20 sm:gap-4 sm:px-5">
         <button
           type="button"
           onClick={openMenu}
@@ -141,7 +141,6 @@ export default function Nav() {
             width={52}
             height={52}
             className="h-12 w-12 sm:h-14 sm:w-14"
-            priority
           />
           <span className="display hidden text-xl leading-none text-cream md:block">
             Igire
@@ -212,6 +211,16 @@ export default function Nav() {
             Attend our events
             <Arrow className="h-4 w-4" />
           </span>
+        </a>
+
+        {/* compact CTA for phones — keeps the primary action reachable where the
+            full "Attend our events" button doesn't fit */}
+        <a
+          href="#calendar"
+          aria-label="Attend our events"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange text-bg transition-colors hover:bg-orange-deep sm:hidden"
+        >
+          <Arrow className="h-5 w-5" />
         </a>
       </nav>
 
